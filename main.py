@@ -2,14 +2,12 @@
 🏠 דירה-האנטר — Main Script
 מריץ סריקה, מנתח, ושולח התראות
 """
-
 import json
 import os
 import sys
 import logging
 from pathlib import Path
 from datetime import datetime
-
 from scraper import Yad2Scraper
 from analyzer import ApartmentScorer
 from telegram_bot import TelegramNotifier
@@ -67,57 +65,60 @@ def main():
     apartments = scraper.scrape(max_pages=3)
     logger.info(f"Found {len(apartments)} apartments matching filters")
 
-    # === SCORE & FILTER NEW ===
-    new_apartments = []
+    # === SCORE & FILTER UNSENT ===
+    # "New" means: not yet notified (either brand new OR seen but skipped due to quiet hours)
+    pending_apartments = []
     for apt in apartments:
         # Calculate score
         apt.score = scorer.score(apt)
 
-        # Check if new
-        if db.is_new(apt.id):
+        # Check if not yet notified
+        if db.is_unsent(apt.id):
             # Check score threshold
             threshold = config.get("scan", {}).get("score_threshold", 0)
             if apt.score >= threshold:
-                new_apartments.append(apt)
-                logger.info(f"  ✨ NEW: {apt.title} | ₪{apt.price:,} | "
-                          f"Score: {apt.score}")
+                pending_apartments.append(apt)
+                if db.is_new(apt.id):
+                    logger.info(f"  ✨ NEW: {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood} | Score: {apt.score}")
+                else:
+                    logger.info(f"  ⏳ PENDING (was in quiet hours): {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood} | Score: {apt.score}")
 
-        # Save to DB (even if not new, update data)
+        # Save to DB (even if already seen, update data)
         db.save_apartment(apt)
 
-    logger.info(f"\n📊 Results: {len(apartments)} total, {len(new_apartments)} new")
+    logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} pending notification")
 
     # === SEND NOTIFICATIONS ===
-    if new_apartments:
-        logger.info(f"\n📱 Sending {len(new_apartments)} Telegram alerts...")
+    if pending_apartments:
+        logger.info(f"\n📱 Sending {len(pending_apartments)} Telegram alerts...")
 
         # Sort by score (best first)
-        new_apartments.sort(key=lambda a: a.score, reverse=True)
+        pending_apartments.sort(key=lambda a: a.score, reverse=True)
 
         sent_count = 0
-        for apt in new_apartments:
+        for apt in pending_apartments:
             success = notifier.send_apartment_alert(apt)
             if success:
                 db.mark_notified(apt.id)
                 sent_count += 1
-
             # Small delay between messages
             import time
             time.sleep(1)
 
-        logger.info(f"✅ Sent {sent_count}/{len(new_apartments)} alerts")
+        logger.info(f"✅ Sent {sent_count}/{len(pending_apartments)} alerts")
 
-        # Send summary if more than 3 new apartments
-        if len(new_apartments) > 3:
-            notifier.send_summary(new_apartments, len(apartments))
+        # Send summary if more than 3 sent
+        if sent_count > 3:
+            sent_apts = [a for a in pending_apartments[:sent_count]]
+            notifier.send_summary(sent_apts, len(apartments))
     else:
-        logger.info("😴 No new apartments found this scan")
+        logger.info("😴 No pending apartments this scan")
 
     # === LOG SCAN ===
     db.log_scan(
         source="yad2",
         total=len(apartments),
-        new=len(new_apartments)
+        new=len(pending_apartments)
     )
 
     # Print stats
@@ -126,6 +127,7 @@ def main():
     logger.info(f"  Total apartments: {stats['total_apartments']}")
     logger.info(f"  Found today: {stats['found_today']}")
     logger.info(f"  Notified: {stats['notified']}")
+
     logger.info(f"\n🏁 Scan complete at {datetime.now().strftime('%H:%M:%S')}")
 
 
