@@ -2,7 +2,6 @@
 Database — מסד נתונים פשוט למניעת כפילויות
 משתמש ב-SQLite (קובץ אחד, אפס תלויות)
 """
-
 import sqlite3
 import json
 import logging
@@ -61,7 +60,7 @@ class ApartmentDB:
             conn.commit()
 
     def is_new(self, apartment_id: str) -> bool:
-        """בודק אם הדירה חדשה (לא ראינו אותה לפני כן)"""
+        """בודק אם הדירה חדשה לחלוטין (מעולם לא נראתה)"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT 1 FROM apartments WHERE id = ?",
@@ -69,12 +68,24 @@ class ApartmentDB:
             )
             return cursor.fetchone() is None
 
+    def is_unsent(self, apartment_id: str) -> bool:
+        """בודק אם הדירה עוד לא נשלחה התראה עליה (חדשה לגמרי OR נראתה בשעות שקטות)"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT notified FROM apartments WHERE id = ?",
+                (apartment_id,)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return True  # Brand new - never seen
+            return row[0] == 0  # Seen but not yet notified
+
     def save_apartment(self, apt) -> bool:
         """שומר דירה למסד הנתונים"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
-                    INSERT OR REPLACE INTO apartments 
+                    INSERT OR REPLACE INTO apartments
                     (id, source, title, price, rooms, area_sqm, floor,
                      neighborhood, address, description, contact_name,
                      contact_phone, url, image_url, date_added, score, raw_data)
@@ -87,7 +98,7 @@ class ApartmentDB:
                     json.dumps(apt.raw_data, ensure_ascii=False)
                 ))
                 conn.commit()
-                return True
+            return True
         except Exception as e:
             logger.error(f"Error saving apartment {apt.id}: {e}")
             return False
@@ -115,12 +126,13 @@ class ApartmentDB:
         with sqlite3.connect(self.db_path) as conn:
             total = conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0]
             notified = conn.execute("SELECT COUNT(*) FROM apartments WHERE notified=1").fetchone()[0]
+            unsent = conn.execute("SELECT COUNT(*) FROM apartments WHERE notified=0").fetchone()[0]
             today = conn.execute(
                 "SELECT COUNT(*) FROM apartments WHERE first_seen >= date('now')"
             ).fetchone()[0]
-
-            return {
-                "total_apartments": total,
-                "notified": notified,
-                "found_today": today,
-            }
+        return {
+            "total_apartments": total,
+            "notified": notified,
+            "unsent": unsent,
+            "found_today": today,
+        }
