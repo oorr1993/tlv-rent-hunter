@@ -1,0 +1,47 @@
+{
+  "search": {
+    "city": "תל אביב יפו",
+    "city_code": 5000,
+    "min_price": 3000,
+    "max_price": 7000,
+    "min_rooms": 2,
+    "max_rooms": 4,
+    "neighborhoods": [
+      "פלורנטין",
+      "לב העיר",
+      "נווה צדק",
+      "רוטשילד",
+      "הצפון הישן",
+      "כרם התימנים",
+      "שפירא",
+      "יפו"
+    ],
+    "keywords_include": [],
+    "keywords_exclude": ["סאבלט", "שותפים", "שותף"],
+    "min_area_sqm": 40,
+    "max_floor": 10,
+    "pet_friendly": false,
+    "has_parking": false,
+    "has_elevator": false,
+    "has_balcony": false,
+    "immediate_entry": false
+  },
+  "scan": {
+    "interval_minutes": 10,
+    "max_results_per_scan": 50,
+    "alert_only_new": true,
+    "score_threshold": 60
+  },
+  "telegram": {
+    "enabled": true,
+    "send_photos": true,
+    "quiet_hours_start": "23:00",
+    "quiet_hours_end": "07:00"
+  },
+  "scoring": {
+    "price_weight": 30,
+    "location_weight": 25,
+    "size_weight": 20,
+    "freshness_weight": 25
+  }
+}
