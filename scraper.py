@@ -7,12 +7,14 @@ import logging
 from typing import Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
-from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
 YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/item/{token}"
+
+# Tel Aviv full bounding box (lat_min,lon_min,lat_max,lon_max)
+TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -27,9 +29,6 @@ DEFAULT_HEADERS = {
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-site",
 }
-
-# Tel Aviv full bounding box
-TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
 
 @dataclass
@@ -62,23 +61,6 @@ class Yad2Scraper:
         self.config = config["search"]
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
-
-    def _build_url(self) -> str:
-        # Build URL manually to avoid comma encoding in bBox
-        base_params = {
-            "city": str(self.config.get("city_code", "5000")),
-            "area": "1",
-            "region": "3",
-            "minRooms": str(self.config.get("min_rooms", 2)),
-            "maxRooms": str(self.config.get("max_rooms", 4)),
-            "priceMin": str(self.config.get("min_price", 5000)),
-            "priceMax": str(self.config.get("max_price", 8000)),
-            "zoom": "11",
-        }
-        query_string = urlencode(base_params)
-        # Append bBox without encoding the commas
-        query_string += f"&bBox={TEL_AVIV_BBOX}"
-        return f"{YAD2_MAP_API}?{query_string}"
 
     def _parse_marker(self, item: dict) -> Optional["Apartment"]:
         try:
@@ -173,11 +155,21 @@ class Yad2Scraper:
 
     def scrape(self, max_pages: int = 3) -> list:
         all_apartments = []
-        url = self._build_url()
-        logger.info(f"Fetching Yad2 map API: {url}")
+
+        # Build URL manually - bBox commas must NOT be percent-encoded
+        url = (
+            f"{YAD2_MAP_API}"
+            f"?city=5000&area=1&region=3"
+            f"&minRooms={self.config.get('min_rooms', 2)}"
+            f"&maxRooms={self.config.get('max_rooms', 4)}"
+            f"&zoom=11"
+            f"&bBox={TEL_AVIV_BBOX}"
+        )
+        logger.info(f"Fetching Yad2 map API...")
 
         try:
             response = self.session.get(url, timeout=20)
+            logger.info(f"Response status: {response.status_code}")
             response.raise_for_status()
 
             data = response.json()
@@ -192,12 +184,14 @@ class Yad2Scraper:
                 if apt and self._filter_apartment(apt):
                     all_apartments.append(apt)
 
+            logger.info(f"After price/room/neighborhood filter: {len(all_apartments)} apartments")
+
         except requests.RequestException as e:
             logger.error(f"Error fetching Yad2 API: {e}")
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
 
-        logger.info(f"Total apartments after filter: {len(all_apartments)}")
+        logger.info(f"Total apartments found: {len(all_apartments)}")
         return all_apartments
 
     def get_item_details(self, token: str) -> Optional[dict]:
