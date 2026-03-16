@@ -1,23 +1,18 @@
 """
 yad2 scraper - Yad2 Rental Apartment Scraper
-Uses the Yad2 map API endpoint which returns real listing data
+Uses the Yad2 map API endpoint
 """
 import requests
-import time
-import random
 import logging
 from typing import Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
+from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
-# Yad2 map API - returns up to 200 listings with full details
 YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/item/{token}"
-
-# Tel Aviv bounding box (covers all of Tel Aviv-Yafo)
-TEL_AVIV_BBOX = "31.98,34.71,32.15,34.88"
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -32,6 +27,9 @@ DEFAULT_HEADERS = {
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-site",
 }
+
+# Tel Aviv full bounding box
+TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
 
 @dataclass
@@ -65,8 +63,9 @@ class Yad2Scraper:
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
 
-    def _build_params(self) -> dict:
-        params = {
+    def _build_url(self) -> str:
+        # Build URL manually to avoid comma encoding in bBox
+        base_params = {
             "city": str(self.config.get("city_code", "5000")),
             "area": "1",
             "region": "3",
@@ -74,10 +73,12 @@ class Yad2Scraper:
             "maxRooms": str(self.config.get("max_rooms", 4)),
             "priceMin": str(self.config.get("min_price", 5000)),
             "priceMax": str(self.config.get("max_price", 8000)),
-            "bBox": TEL_AVIV_BBOX,
-            "zoom": "12",
+            "zoom": "11",
         }
-        return params
+        query_string = urlencode(base_params)
+        # Append bBox without encoding the commas
+        query_string += f"&bBox={TEL_AVIV_BBOX}"
+        return f"{YAD2_MAP_API}?{query_string}"
 
     def _parse_marker(self, item: dict) -> Optional["Apartment"]:
         try:
@@ -99,9 +100,9 @@ class Yad2Scraper:
             city = addr.get("city", {}).get("text", "תל אביב יפו")
             address = f"{street} {house_num}".strip() if street else city
 
-            description = item.get("metaData", {}).get("description", "")
-            contact_name = item.get("contactInfo", {}).get("contactName", "")
-            contact_phone = item.get("contactInfo", {}).get("phone1", {}).get("phoneNumber", "")
+            description = str(item.get("metaData", {}).get("description", ""))
+            contact_name = str(item.get("contactInfo", {}).get("contactName", ""))
+            contact_phone = str(item.get("contactInfo", {}).get("phone1", {}).get("phoneNumber", ""))
 
             images = item.get("images", [])
             image_url = None
@@ -112,7 +113,7 @@ class Yad2Scraper:
                 elif isinstance(img, str):
                     image_url = img
 
-            date_added = item.get("date", datetime.now().isoformat())
+            date_added = str(item.get("date", datetime.now().isoformat()))
             title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
             url = YAD2_ITEM_URL.format(token=token)
 
@@ -172,16 +173,11 @@ class Yad2Scraper:
 
     def scrape(self, max_pages: int = 3) -> list:
         all_apartments = []
+        url = self._build_url()
+        logger.info(f"Fetching Yad2 map API: {url}")
 
         try:
-            params = self._build_params()
-            logger.info(f"Fetching Yad2 map API...")
-
-            response = self.session.get(
-                YAD2_MAP_API,
-                params=params,
-                timeout=20
-            )
+            response = self.session.get(url, timeout=20)
             response.raise_for_status()
 
             data = response.json()
@@ -201,7 +197,7 @@ class Yad2Scraper:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
 
-        logger.info(f"Total apartments found: {len(all_apartments)}")
+        logger.info(f"Total apartments after filter: {len(all_apartments)}")
         return all_apartments
 
     def get_item_details(self, token: str) -> Optional[dict]:
