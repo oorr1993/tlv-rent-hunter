@@ -1,30 +1,36 @@
 """
 yad2 scraper - Yad2 Rental Apartment Scraper
+Uses the Yad2 map API endpoint which returns real listing data
 """
 import requests
 import time
 import random
 import logging
-import json
-import re
 from typing import Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-YAD2_SEARCH_URL = "https://www.yad2.co.il/realestate/rent"
+# Yad2 map API - returns up to 200 listings with full details
+YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/item/{token}"
 
+# Tel Aviv bounding box (covers all of Tel Aviv-Yafo)
+TEL_AVIV_BBOX = "31.98,34.71,32.15,34.88"
+
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
     "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
+    "Origin": "https://www.yad2.co.il",
+    "Referer": "https://www.yad2.co.il/realestate/rent/tel-aviv-area",
     "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Referer": "https://www.yad2.co.il/",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site",
 }
 
 
@@ -59,74 +65,55 @@ class Yad2Scraper:
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
 
-    def _build_params(self, page: int = 1) -> dict:
+    def _build_params(self) -> dict:
         params = {
-            "city": self.config.get("city_code", "5000"),
-            "minRooms": self.config.get("min_rooms", 2),
-            "maxRooms": self.config.get("max_rooms", 4),
-            "priceMin": self.config.get("min_price", 3000),
-            "priceMax": self.config.get("max_price", 7000),
-            "page": page,
+            "city": str(self.config.get("city_code", "5000")),
+            "area": "1",
+            "region": "3",
+            "minRooms": str(self.config.get("min_rooms", 2)),
+            "maxRooms": str(self.config.get("max_rooms", 4)),
+            "priceMin": str(self.config.get("min_price", 5000)),
+            "priceMax": str(self.config.get("max_price", 8000)),
+            "bBox": TEL_AVIV_BBOX,
+            "zoom": "12",
         }
         return params
 
-    def _extract_next_data(self, html: str) -> Optional[dict]:
+    def _parse_marker(self, item: dict) -> Optional["Apartment"]:
         try:
-            soup = BeautifulSoup(html, "html.parser")
-            script_tag = soup.find("script", {"id": "__NEXT_DATA__"})
-            if script_tag and script_tag.string:
-                return json.loads(script_tag.string)
-        except Exception as e:
-            logger.error(f"Error extracting __NEXT_DATA__: {e}")
-        return None
-
-    def _parse_item(self, item: dict) -> Optional["Apartment"]:
-        try:
-            token = str(item.get("token", item.get("id", item.get("orderId", ""))))
+            token = str(item.get("token", ""))
             if not token:
                 return None
 
-            price_raw = item.get("price", item.get("Price", 0))
-            if isinstance(price_raw, str):
-                price = int("".join(filter(str.isdigit, price_raw)) or "0")
-            else:
-                price = int(price_raw or 0)
+            price = int(item.get("price", 0) or 0)
 
-            rooms_raw = str(item.get("rooms", item.get("Rooms", item.get("roomsText", "0"))))
-            rooms_raw = rooms_raw.replace("\u05d7\u05d3\u05e8\u05d9\u05dd", "").replace("\u05d7\u05d3\u05e8", "").strip()
-            try:
-                rooms = float(rooms_raw or 0)
-            except ValueError:
-                rooms = 0.0
+            details = item.get("additionalDetails", {})
+            rooms = float(details.get("roomsCount", 0) or 0)
+            area = int(details.get("squareMeter", 0) or 0)
 
-            area = int(item.get("squareMeter", item.get("squareMeters", item.get("SquareMeter", 0))) or 0)
-            floor = int(item.get("floor", item.get("Floor", 0)) or 0)
+            addr = item.get("address", {})
+            floor = int(addr.get("house", {}).get("floor", 0) or 0)
+            neighborhood = addr.get("neighborhood", {}).get("text", "")
+            street = addr.get("street", {}).get("text", "")
+            house_num = addr.get("house", {}).get("number", "")
+            city = addr.get("city", {}).get("text", "תל אביב יפו")
+            address = f"{street} {house_num}".strip() if street else city
 
-            neighborhood = item.get("neighborhood", item.get("neighborhoodHe", ""))
-            if isinstance(neighborhood, dict):
-                neighborhood = neighborhood.get("text", "")
-            address = item.get("street", item.get("address", item.get("streetHe", "")))
-            if isinstance(address, dict):
-                address = address.get("text", "")
-            city = item.get("cityHe", item.get("city_text", "\u05ea\u05dc \u05d0\u05d1\u05d9\u05d1"))
+            description = item.get("metaData", {}).get("description", "")
+            contact_name = item.get("contactInfo", {}).get("contactName", "")
+            contact_phone = item.get("contactInfo", {}).get("phone1", {}).get("phoneNumber", "")
 
-            description = item.get("infoText", item.get("info_text", item.get("merchantName", "")))
-            contact_name = item.get("contactName", item.get("contact_name", ""))
-            contact_phone = item.get("phone", item.get("contactPhone", ""))
-            if isinstance(contact_phone, dict):
-                contact_phone = contact_phone.get("title", "")
-
-            images = item.get("images", item.get("Images", []))
+            images = item.get("images", [])
             image_url = None
             if images and isinstance(images, list):
-                first = images[0]
-                if isinstance(first, dict):
-                    image_url = first.get("src", first.get("url", ""))
-                elif isinstance(first, str):
-                    image_url = first
+                img = images[0]
+                if isinstance(img, dict):
+                    image_url = img.get("src", img.get("url", ""))
+                elif isinstance(img, str):
+                    image_url = img
 
-            date_added = item.get("date", item.get("dateAdded", datetime.now().isoformat()))
-            title = f"{rooms} \u05d7\u05d3\u05f3 \u05d1{neighborhood}" if neighborhood else f"{rooms} \u05d7\u05d3\u05f3 \u05d1{city}"
+            date_added = item.get("date", datetime.now().isoformat())
+            title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
             url = YAD2_ITEM_URL.format(token=token)
 
             return Apartment(
@@ -172,7 +159,7 @@ class Yad2Scraper:
 
         neighborhoods = config.get("neighborhoods", [])
         if neighborhoods and apt.neighborhood:
-            if not any(n in apt.neighborhood for n in neighborhoods):
+            if not any(n.strip() in apt.neighborhood for n in neighborhoods):
                 return False
 
         exclude = config.get("keywords_exclude", [])
@@ -186,77 +173,36 @@ class Yad2Scraper:
     def scrape(self, max_pages: int = 3) -> list:
         all_apartments = []
 
-        for page in range(1, max_pages + 1):
-            try:
-                params = self._build_params(page)
-                logger.info(f"Fetching Yad2 page {page}...")
+        try:
+            params = self._build_params()
+            logger.info(f"Fetching Yad2 map API...")
 
-                response = self.session.get(
-                    YAD2_SEARCH_URL,
-                    params=params,
-                    timeout=20
-                )
-                response.raise_for_status()
+            response = self.session.get(
+                YAD2_MAP_API,
+                params=params,
+                timeout=20
+            )
+            response.raise_for_status()
 
-                next_data = self._extract_next_data(response.text)
-                items = []
+            data = response.json()
+            markers = data.get("data", {}).get("markers", [])
+            yad1_markers = data.get("data", {}).get("yad1Markers", [])
+            all_markers = markers + yad1_markers
 
-                if next_data:
-                    try:
-                        props = next_data.get("props", {})
-                        page_props = props.get("pageProps", {})
-                        feed = (
-                            page_props.get("feed") or
-                            page_props.get("dehydratedState", {}).get("queries", [{}])[0]
-                            .get("state", {}).get("data", {}).get("feed") or
-                            {}
-                        )
-                        items = (
-                            feed.get("feed_items") or
-                            feed.get("feedItems") or
-                            feed.get("items") or
-                            page_props.get("feedItems") or
-                            []
-                        )
-                    except Exception as e:
-                        logger.error(f"Error navigating Next.js data: {e}")
+            logger.info(f"API returned {len(all_markers)} listings")
 
-                if not items:
-                    logger.info("No items found on page {}, stopping".format(page))
-                    break
+            for item in all_markers:
+                apt = self._parse_marker(item)
+                if apt and self._filter_apartment(apt):
+                    all_apartments.append(apt)
 
-                logger.info(f"Page {page}: found {len(items)} items")
-
-                for item in items:
-                    item_type = item.get("type", "")
-                    if item_type in ("ad", "banner", "platinum", "yellow", "commercial"):
-                        continue
-                    apt = self._parse_item(item)
-                    if apt and self._filter_apartment(apt):
-                        all_apartments.append(apt)
-
-                if page < max_pages:
-                    delay = random.uniform(3.0, 6.0)
-                    time.sleep(delay)
-
-            except requests.RequestException as e:
-                logger.error(f"Error fetching Yad2 page {page}: {e}")
-                break
-            except Exception as e:
-                logger.error(f"Unexpected error on page {page}: {e}")
-                break
+        except requests.RequestException as e:
+            logger.error(f"Error fetching Yad2 API: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
 
         logger.info(f"Total apartments found: {len(all_apartments)}")
         return all_apartments
 
     def get_item_details(self, token: str) -> Optional[dict]:
-        try:
-            url = YAD2_ITEM_URL.format(token=token)
-            response = self.session.get(url, timeout=10)
-            response.raise_for_status()
-            next_data = self._extract_next_data(response.text)
-            if next_data:
-                return next_data.get("props", {}).get("pageProps", {})
-        except Exception as e:
-            logger.error(f"Error getting item details for {token}: {e}")
         return None
