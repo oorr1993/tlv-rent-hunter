@@ -1,11 +1,12 @@
 """
-דירה-האנטר — Main Script
-תומך בפקודות טלגרם לשינוי פילטרים בזמן אמת
+×××¨×-××× ××¨ â Main Script
+×ª××× ××¤×§××××ª ××××¨× ××©×× ×× ×¤××××¨×× ×××× ×××ª
 """
 import json
 import os
 import sys
 import logging
+import time
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -58,13 +59,13 @@ def save_tg_offset(offset: int):
 
 def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
     """
-    קורא הודעות חדשות מהבוט ומעדכן config בהתאם.
-    פקודות נתמכות:
-      /חוף 1.5    - דירות עד 1.5 ק'מ מהחוף
-      /חוף כבוי   - בטל פילטר חוף (חזור לשכונות)
-      /מחיר 5000 8000  - שנה טווח מחיר
-      /חדרים 2 4  - שנה טווח חדרים
-      /סטטוס      - שלח סטטוס נוכחי
+    ×§××¨× ××××¢××ª ×××©××ª ××××× ×××¢××× config ×××ª××.
+    ×¤×§××××ª × ×ª××××ª:
+      /×××£ 1.5    - ×××¨××ª ×¢× 1.5 ×§'× ×××××£
+      /×××£ ××××   - ××× ×¤××××¨ ×××£ (××××¨ ××©××× ××ª)
+      /××××¨ 5000 8000  - ×©× × ×××× ××××¨
+      /×××¨×× 2 4  - ×©× × ×××× ×××¨××
+      /×¡××××¡      - ×©×× ×¡××××¡ × ××××
     """
     base_url = f"https://api.telegram.org/bot{token}"
     offset = get_tg_offset()
@@ -93,25 +94,25 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
 
             logger.info(f"Received command: {text}")
 
-            if text.startswith("/חוף") or text.lower().startswith("/beach"):
+            if text.startswith("/×××£") or text.lower().startswith("/beach"):
                 parts = text.split()
                 if len(parts) >= 2:
                     arg = parts[1].replace(",", ".").strip()
-                    if arg in ["כבוי", "off", "0", "no"]:
+                    if arg in ["××××", "off", "0", "no"]:
                         config["search"]["max_distance_from_beach_km"] = 0
-                        reply = "✅ פילטר חוף בוטל - חוזר לסריקה לפי שכונות"
+                        reply = "â ×¤××××¨ ×××£ ×××× - ××××¨ ××¡×¨××§× ××¤× ×©××× ××ª"
                     else:
                         try:
                             km = float(arg)
                             config["search"]["max_distance_from_beach_km"] = km
-                            reply = f"✅ מחפש דירות עד {km} ק'מ מהחוף"
+                            reply = f"â ×××¤×© ×××¨××ª ×¢× {km} ×§'× ×××××£"
                         except ValueError:
-                            reply = "❌ שגיאה: /חוף 1.5 (מספר בק'מ)"
+                            reply = "â ×©××××: /×××£ 1.5 (××¡×¤×¨ ××§'×)"
                 else:
-                    reply = "📍 שימוש: /חוף 1.5 (מרחק בק'מ מהחוף)\n/חוף כבוי לביטול"
+                    reply = "ð ×©××××©: /×××£ 1.5 (××¨××§ ××§'× ×××××£)\n/×××£ ×××× ××××××"
                 changed = True
 
-            elif text.startswith("/מחיר") or text.lower().startswith("/price"):
+            elif text.startswith("/××××¨") or text.lower().startswith("/price"):
                 parts = text.split()
                 if len(parts) >= 3:
                     try:
@@ -119,14 +120,14 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
                         mx = int(parts[2])
                         config["search"]["min_price"] = mn
                         config["search"]["max_price"] = mx
-                        reply = f"✅ מחיר עודכן: ₪{mn:,} - ₪{mx:,}"
+                        reply = f"â ××××¨ ×¢××××: âª{mn:,} - âª{mx:,}"
                         changed = True
                     except ValueError:
-                        reply = "❌ שגיאה: /מחיר 5000 8000"
+                        reply = "â ×©××××: /××××¨ 5000 8000"
                 else:
-                    reply = "📍 שימוש: /מחיר 5000 8000"
+                    reply = "ð ×©××××©: /××××¨ 5000 8000"
 
-            elif text.startswith("/חדרים") or text.lower().startswith("/rooms"):
+            elif text.startswith("/×××¨××") or text.lower().startswith("/rooms"):
                 parts = text.split()
                 if len(parts) >= 3:
                     try:
@@ -134,33 +135,33 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
                         mx = float(parts[2])
                         config["search"]["min_rooms"] = mn
                         config["search"]["max_rooms"] = mx
-                        reply = f"✅ חדרים עודכן: {mn} - {mx}"
+                        reply = f"â ×××¨×× ×¢××××: {mn} - {mx}"
                         changed = True
                     except ValueError:
-                        reply = "❌ שגיאה: /חדרים 2 4"
+                        reply = "â ×©××××: /×××¨×× 2 4"
                 else:
-                    reply = "📍 שימוש: /חדרים 2 4"
+                    reply = "ð ×©××××©: /×××¨×× 2 4"
 
-            elif text.startswith("/סטטוס") or text.lower().startswith("/status"):
+            elif text.startswith("/×¡××××¡") or text.lower().startswith("/status"):
                 s = config["search"]
                 beach = s.get("max_distance_from_beach_km", 0)
-                beach_txt = f"{beach} ק'מ מהחוף" if beach else "לפי שכונות"
+                beach_txt = f"{beach} ×§'× ×××××£" if beach else "××¤× ×©××× ××ª"
                 reply = (
-                    f"📊 סטטוס נוכחי:\n"
-                    f"💰 מחיר: ₪{s['min_price']:,} - ₪{s['max_price']:,}\n"
-                    f"🛏 חדרים: {s['min_rooms']} - {s['max_rooms']}\n"
-                    f"📍 אזור: {beach_txt}"
+                    f"ð ×¡××××¡ × ××××:\n"
+                    f"ð° ××××¨: âª{s['min_price']:,} - âª{s['max_price']:,}\n"
+                    f"ð ×××¨××: {s['min_rooms']} - {s['max_rooms']}\n"
+                    f"ð ××××¨: {beach_txt}"
                 )
 
-            elif text.startswith("/עזרה") or text.lower().startswith("/help") or text == "/start":
+            elif text.startswith("/×¢××¨×") or text.lower().startswith("/help") or text == "/start":
                 reply = (
-                    "🤖 דירה-האנטר — פקודות:\n\n"
-                    "/חוף 1.5 — חפש עד 1.5 ק'מ מהחוף\n"
-                    "/חוף כבוי — חזור לסריקה לפי שכונות\n"
-                    "/מחיר 5000 8000 — שנה טווח מחיר\n"
-                    "/חדרים 2 4 — שנה מספר חדרים\n"
-                    "/סטטוס — הצג הגדרות נוכחיות\n"
-                    "/עזרה — הצג הודעה זו"
+                    "ð¤ ×××¨×-××× ××¨ â ×¤×§××××ª:\n\n"
+                    "/×××£ 1.5 â ××¤×© ×¢× 1.5 ×§'× ×××××£\n"
+                    "/×××£ ×××× â ××××¨ ××¡×¨××§× ××¤× ×©××× ××ª\n"
+                    "/××××¨ 5000 8000 â ×©× × ×××× ××××¨\n"
+                    "/×××¨×× 2 4 â ×©× × ××¡×¤×¨ ×××¨××\n"
+                    "/×¡××××¡ â ××¦× ××××¨××ª × ××××××ª\n"
+                    "/×¢××¨× â ××¦× ××××¢× ××"
                 )
             else:
                 reply = None
@@ -184,7 +185,7 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
 
 def main():
     logger.info("=" * 50)
-    logger.info("🏠 דירה-האנטר — Starting scan")
+    logger.info("ð  ×××¨×-××× ××¨ â Starting scan")
     logger.info("=" * 50)
 
     config = load_config()
@@ -192,11 +193,11 @@ def main():
     telegram_token = get_env_or_fail("TELEGRAM_BOT_TOKEN")
     telegram_chat_id = get_env_or_fail("TELEGRAM_CHAT_ID")
 
-    # בדוק פקודות חדשות מהמשתמש BEFORE the scan
+    # ××××§ ×¤×§××××ª ×××©××ª ××××× ×××¢××× config ×××ª××.
     config = process_telegram_commands(telegram_token, telegram_chat_id, config)
 
     logger.info(f"City: {config['search']['city']}")
-    logger.info(f"Price: ₪{config['search']['min_price']:,} - ₪{config['search']['max_price']:,}")
+    logger.info(f"Price: âª{config['search']['min_price']:,} - âª{config['search']['max_price']:,}")
     logger.info(f"Rooms: {config['search']['min_rooms']} - {config['search']['max_rooms']}")
     beach = config["search"].get("max_distance_from_beach_km", 0)
     if beach:
@@ -209,7 +210,7 @@ def main():
     scorer = ApartmentScorer(config)
     notifier = TelegramNotifier(telegram_token, telegram_chat_id, config)
 
-    logger.info("\n📡 Scanning Yad2...")
+    logger.info("\nð¡ Scanning Yad2...")
     apartments = scraper.scrape(max_pages=3)
     logger.info(f"Found {len(apartments)} apartments matching filters")
 
@@ -221,33 +222,34 @@ def main():
             if apt.score >= threshold:
                 pending_apartments.append(apt)
                 status = "NEW" if db.is_new(apt.id) else "PENDING"
-                beach_info = f" | {apt.distance_to_beach_km:.1f}km חוף" if apt.distance_to_beach_km >= 0 else ""
-                logger.info(f"  [{status}] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
+                beach_info = f" | {apt.distance_to_beach_km:.1f}km ×××£" if apt.distance_to_beach_km >= 0 else ""
+                logger.info(f"  [{status}] {apt.rooms}×× | âª{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
         db.save_apartment(apt)
 
-    logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} pending")
+    logger.info(f"\nð Results: {len(apartments)} total, {len(pending_apartments)} pending")
 
     if pending_apartments:
-        logger.info(f"\n📱 Sending {len(pending_apartments)} Telegram alerts...")
+        max_send = config.get("scan", {}).get("max_results_per_scan", 50)
         pending_apartments.sort(key=lambda a: a.score, reverse=True)
+        to_send = pending_apartments[:max_send]
+        logger.info(f"\nð± Sending {len(to_send)} Telegram alerts (top {max_send} by score)...")
         sent_count = 0
-        for apt in pending_apartments:
+        for apt in to_send:
             success = notifier.send_apartment_alert(apt)
             if success:
                 db.mark_notified(apt.id)
                 sent_count += 1
-            import time
             time.sleep(1)
-        logger.info(f"✅ Sent {sent_count}/{len(pending_apartments)} alerts")
+        logger.info(f"â Sent {sent_count}/{len(to_send)} alerts")
         if sent_count > 3:
-            notifier.send_summary(pending_apartments[:sent_count], len(apartments))
+            notifier.send_summary(to_send[:sent_count], len(apartments))
     else:
-        logger.info("😴 No pending apartments this scan")
+        logger.info("ð´ No pending apartments this scan")
 
     db.log_scan(source="yad2", total=len(apartments), new=len(pending_apartments))
     stats = db.get_stats()
-    logger.info(f"\n📈 DB: Total={stats['total_apartments']} Notified={stats['notified']} Unsent={stats['unsent']}")
-    logger.info(f"\n🏁 Scan complete at {datetime.now().strftime('%H:%M:%S')}")
+    logger.info(f"\nð DB: Total={stats['total_apartments']} Notified={stats['notified']} Unsent={stats['unsent']}")
+    logger.info(f"\nð Scan complete at {datetime.now().strftime('%H:%M:%S')}")
 
 
 if __name__ == "__main__":
