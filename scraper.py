@@ -15,7 +15,7 @@ YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/realestate/item/tel-aviv-area/{token}"
 TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
-# חוף הים - קוברדינטות מרכזיות של קו החוף בת” (כ-34.76 מזרח)
+# חוף הים - קוארדינטות מרכזיות של קו החוף בת"א (כ-34.76 מזרח)
 # קו החוף של ת"א נמצא בסביבות lon=34.758-34.763
 BEACH_LON = 34.761  # קו הרוחב של החוף
 
@@ -94,7 +94,7 @@ class Yad2Scraper:
             lat = float(coords.get("lat", 0) or 0)
             lon = float(coords.get("lon", 0) or 0)
 
-            # מרחק מהחוף (רק אם יש קוברדינטות)
+            # מרחק מהחוף (רק אם יש קוארדינטות)
             dist_beach = -1.0
             if lat and lon:
                 # החוף של ת"א: lat ~ 32.08 (בממוצע), lon ~ 34.761
@@ -120,7 +120,15 @@ class Yad2Scraper:
             phone_obj = contact.get("phone1", {})
             contact_phone = str(phone_obj.get("phoneNumber", "") if isinstance(phone_obj, dict) else "")
 
-            date_added = str(item.get("date", datetime.now().isoformat()))
+            # נסה כמה שדות תאריך אפשריים מה-API של יד2
+            date_added = str(
+                item.get("date_added")
+                or item.get("updatedAt")
+                or item.get("DateOfEntry")
+                or item.get("date")
+                or item.get("createdAt")
+                or datetime.now().isoformat()
+            )
             title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
             url = YAD2_ITEM_URL.format(token=token)
 
