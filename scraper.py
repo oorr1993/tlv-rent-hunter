@@ -15,9 +15,9 @@ YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/realestate/item/tel-aviv-area/{token}"
 TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
-# חוף הים - קוארדינטות מרכזיות של קו החוף בת"א (כ-34.76 מזרח)
-# קו החוף של ת"א נמצא בסביבות lon=34.758-34.763
-BEACH_LON = 34.761  # קו הרוחב של החוף
+# ×××£ ××× - ×§×××¨××× ×××ª ××¨×××××ª ×©× ×§× ××××£ ××ª"× (×-34.76 ×××¨×)
+# ×§× ××××£ ×©× ×ª"× × ××¦× ××¡×××××ª lon=34.758-34.763
+BEACH_LON = 34.761  # ×§× ××¨××× ×©× ××××£
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -29,7 +29,7 @@ DEFAULT_HEADERS = {
 
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
-    """מחשב מרחק בק"מ בין שתי נקודות (Haversine formula)"""
+    """×××©× ××¨××§ ××§'× ××× ×©×ª× × ×§××××ª (Haversine formula)"""
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -86,26 +86,26 @@ class Yad2Scraper:
             neighborhood = addr.get("neighborhood", {}).get("text", "")
             street = addr.get("street", {}).get("text", "")
             house_num = addr.get("house", {}).get("number", "")
-            city = addr.get("city", {}).get("text", "תל אביב יפו")
+            city = addr.get("city", {}).get("text", "×ª× ×××× ××¤×")
             address = f"{street} {house_num}".strip() if street else city
 
-            # קוארדינטות
+            # ×§×××¨××× ×××ª
             coords = addr.get("coords", {})
             lat = float(coords.get("lat", 0) or 0)
             lon = float(coords.get("lon", 0) or 0)
 
-            # מרחק מהחוף (רק אם יש קוארדינטות)
+            # ××¨××§ ×××××£ (×¨×§ ×× ××© ×§×××¨××× ×××ª)
             dist_beach = -1.0
             if lat and lon:
-                # החוף של ת"א: lat ~ 32.08 (בממוצע), lon ~ 34.761
-                # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
-                # כי החוף הוא קו מאונך לגמרי
+                # ××××£ ×©× ×ª"×: lat ~ 32.08 (×××××¦×¢), lon ~ 34.761
+                # ×××©××× ××¨××§ ×¨×§ ×¢× ×¦××¨ ××¨××× (×××¨×-××¢×¨×)
+                # ×× ××××£ ××× ×§× ×××× × ××××¨×
                 dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
 
             meta = item.get("metaData", {})
             description = str(meta.get("description", ""))
 
-            # תמונות - הAPI מחזיר אותן ב-metaData
+            # ×ª××× ××ª - ×API ×××××¨ ×××ª× ×-metaData
             image_url = None
             cover = meta.get("coverImage", "")
             if cover:
@@ -121,7 +121,7 @@ class Yad2Scraper:
             contact_phone = str(phone_obj.get("phoneNumber", "") if isinstance(phone_obj, dict) else "")
 
             date_added = str(item.get("date", datetime.now().isoformat()))
-            title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
+            title = f"{rooms} ××' ×{neighborhood}" if neighborhood else f"{rooms} ××' ×{city}"
             url = YAD2_ITEM_URL.format(token=token)
 
             return Apartment(
@@ -161,13 +161,13 @@ class Yad2Scraper:
         if apt.area_sqm > 0 and config.get("min_area_sqm"):
             if apt.area_sqm < config["min_area_sqm"]: return False
 
-        # פילטר מרחק מהחוף
+        # ×¤××××¨ ××¨××§ ×××××£
         max_beach_km = config.get("max_distance_from_beach_km", 0)
         if max_beach_km and max_beach_km > 0 and apt.distance_to_beach_km >= 0:
             if apt.distance_to_beach_km > max_beach_km:
                 return False
 
-        # פילטר שכונות (אם אין פילטר חוף, בודקים שכונות)
+        # ×¤××××¨ ×©××× ××ª (×× ××× ×¤××××¨ ×××£, ××××§×× ×©××× ××ª)
         if not max_beach_km:
             neighborhoods = config.get("neighborhoods", [])
             if neighborhoods and apt.neighborhood:
@@ -183,45 +183,82 @@ class Yad2Scraper:
 
     def scrape(self, max_pages: int = 3) -> list:
         all_apartments = []
+        min_price = self.config.get("min_price", 0)
+        max_price = self.config.get("max_price", 999999)
         url = (
             f"{YAD2_MAP_API}"
             f"?city=5000&area=1&region=3"
             f"&minRooms={self.config.get('min_rooms', 2)}"
             f"&maxRooms={self.config.get('max_rooms', 4)}"
+            f"&minPrice={min_price}"
+            f"&maxPrice={max_price}"
             f"&zoom=11"
             f"&bBox={TEL_AVIV_BBOX}"
         )
+
+        # User-Agent rotation to reduce blocking
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+        ]
+
         logger.info(f"Fetching Yad2 map API...")
         for attempt in range(3):
             try:
                 if attempt > 0:
-                    time.sleep(5)
-                    logger.info(f"Retry {attempt}/2...")
-                response = self.session.get(url, timeout=20)
+                    wait = 5 + attempt * 5  # 10s, 15s
+                    time.sleep(wait)
+                    logger.info(f"Retry {attempt}/2 (waited {wait}s)...")
+
+                # Rotate user agent per attempt
+                self.session.headers["User-Agent"] = user_agents[attempt % len(user_agents)]
+
+                response = self.session.get(url, timeout=30)
                 logger.info(f"Response status: {response.status_code}")
-                response.raise_for_status()
-                if not response.content:
-                    logger.warning(f"Empty response body on attempt {attempt+1}, retrying...")
+
+                if response.status_code == 403:
+                    logger.warning("Got 403 Forbidden â Yad2 is blocking this IP")
                     continue
+                if response.status_code == 429:
+                    logger.warning("Got 429 Rate Limited â waiting longer...")
+                    time.sleep(30)
+                    continue
+
+                response.raise_for_status()
+
+                if not response.content or len(response.content) < 10:
+                    logger.warning(f"Empty/tiny response ({len(response.content)} bytes) on attempt {attempt+1}")
+                    continue
+
                 data = response.json()
                 markers = data.get("data", {}).get("markers", [])
                 yad1_markers = data.get("data", {}).get("yad1Markers", [])
                 all_markers = markers + yad1_markers
+
+                if not all_markers:
+                    logger.warning(f"API returned 0 markers on attempt {attempt+1}, retrying...")
+                    continue
+
                 logger.info(f"API returned {len(all_markers)} listings")
                 with_images = sum(1 for m in all_markers if m.get("metaData", {}).get("coverImage"))
                 logger.info(f"Items with images: {with_images}/{len(all_markers)}")
+
                 for item in all_markers:
                     apt = self._parse_marker(item)
                     if apt and self._filter_apartment(apt):
                         all_apartments.append(apt)
+
                 max_beach = self.config.get("max_distance_from_beach_km", 0)
                 logger.info(f"After filters (beach:{max_beach}km): {len(all_apartments)} apartments")
                 break
+
             except requests.RequestException as e:
-                logger.error(f"Error fetching Yad2 API: {e}")
+                logger.error(f"Network error: {e}")
             except ValueError as e:
-                logger.error(f"Error fetching Yad2 API: {e}")
+                logger.error(f"JSON parse error: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
+
         logger.info(f"Total apartments found: {len(all_apartments)}")
         return all_apartments
