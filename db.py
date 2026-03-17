@@ -1,6 +1,6 @@
 """
-Database â ××¡× × ×ª×× ×× ×¤×©×× ××× ××¢×ª ××¤××××××ª
-××©×ª××© ×-SQLite (×§×××¥ ×××, ××¤×¡ ×ª×××××ª)
+Database — מסד נתונים פשוט למניעת כפילויות
+משתמש ב-SQLite (קובץ אחד, אפס תלויות)
 """
 import sqlite3
 import json
@@ -14,14 +14,14 @@ DB_PATH = Path(__file__).parent / "apartments.db"
 
 
 class ApartmentDB:
-    """××¡× × ×ª×× ×× ××§××× ××××¡×× ×××¨××ª ××× ××¢×ª ××¤××××××ª"""
+    """מסד נתונים מקומי לאחסון דירות ומניעת כפילויות"""
 
     def __init__(self, db_path: str = None):
         self.db_path = db_path or str(DB_PATH)
         self._init_db()
 
     def _init_db(self):
-        """×××¦×¨ ××ª ×××××××ª ×× ×× ×§×××××ª"""
+        """יוצר את הטבלאות אם לא קיימות"""       
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS apartments (
@@ -60,7 +60,7 @@ class ApartmentDB:
             conn.commit()
 
     def is_new(self, apartment_id: str) -> bool:
-        """××××§ ×× ××××¨× ×××©× ××××××× (××¢××× ×× × ×¨××ª×)"""
+        """בודק אם הדירה חדשה לחלוטין (מעולם לא נראתה)"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT 1 FROM apartments WHERE id = ?",
@@ -69,7 +69,7 @@ class ApartmentDB:
             return cursor.fetchone() is None
 
     def is_unsent(self, apartment_id: str) -> bool:
-        """××××§ ×× ××××¨× ×¢×× ×× × ×©××× ××ª×¨×× ×¢××× (×××©× ××××¨× OR × ×¨××ª× ××©×¢××ª ×©×§×××ª)"""
+        """בודק אם הדירה עוד לא נשלחה התראה עליה (חדשה לגמרי OR נראתה בשעות שקטות)"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT notified FROM apartments WHERE id = ?",
@@ -81,10 +81,10 @@ class ApartmentDB:
             return row[0] == 0  # Seen but not yet notified
 
     def save_apartment(self, apt) -> bool:
-        """×©×××¨ ×××¨× ×××¡× ×× ×ª×× ×× â ××× ×××¤×¡ ××ª ××× notified"""
+        """שומר דירה למסד הנתונים — בלי לאפס את דגל notified"""
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # INSERT OR IGNORE â ×× ×××¨ ×§×××, ×× × ×××¢××
+                # INSERT OR IGNORE — אם כבר קיים, לא נוגעים
                 conn.execute("""
                     INSERT OR IGNORE INTO apartments
                     (id, source, title, price, rooms, area_sqm, floor,
@@ -98,7 +98,7 @@ class ApartmentDB:
                     apt.url, apt.image_url, apt.date_added, apt.score,
                     json.dumps(apt.raw_data, ensure_ascii=False)
                 ))
-                # UPDATE â ×¢××× ×¤×¨××× (××××¨/×¦××× ×××') ××× ×××¢×ª ×-notified
+                # UPDATE — עדכו פרטים (מחיר/ציון וכו') בלי לגעת ב-notified
                 conn.execute("""
                     UPDATE apartments SET
                         price = ?, rooms = ?, area_sqm = ?, floor = ?,
@@ -121,7 +121,7 @@ class ApartmentDB:
             return False
 
     def mark_notified(self, apartment_id: str):
-        """××¡×× ×××¨× ×'× ×©××× ××ª×¨××'"""
+        """מסמן דירה כ'נשלחה התראה'"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE apartments SET notified = 1 WHERE id = ?",
@@ -130,7 +130,7 @@ class ApartmentDB:
             conn.commit()
 
     def log_scan(self, source: str, total: int, new: int, errors: str = ""):
-        """××ª×¢× ×¡×¨××§×"""
+        """מתעד סריקה"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT INTO scan_log (source, total_found, new_found, errors)
@@ -139,7 +139,7 @@ class ApartmentDB:
             conn.commit()
 
     def get_stats(self) -> dict:
-        """×××××¨ ×¡××××¡×××§××ª"""
+        """מחזיר סטטיסטיקות"""
         with sqlite3.connect(self.db_path) as conn:
             total = conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0]
             notified = conn.execute("SELECT COUNT(*) FROM apartments WHERE notified=1").fetchone()[0]
