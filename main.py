@@ -109,8 +109,7 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
                         except ValueError:
                             reply = "❌ שגיאה: /חוף 1.5 (מספר בק'מ)"
                 else:
-                    reply = "📍 שימוש: /חוף 1.5 (מרחק בק'מ מהחוף)
-/חוף כבוי לביטול"
+                    reply = "📍 שימוש: /חוף 1.5 (מרחק בק'מ מהחוף)\n/חוף כבוי לביטול"
                 changed = True
 
             elif text.startswith("/מחיר") or text.lower().startswith("/price"):
@@ -148,30 +147,20 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
                 beach = s.get("max_distance_from_beach_km", 0)
                 beach_txt = f"{beach} ק'מ מהחוף" if beach else "לפי שכונות"
                 reply = (
-                    f"📊 סטטוס נוכחי:
-"
-                    f"💰 מחיר: ₪{s['min_price']:,} - ₪{s['max_price']:,}
-"
-                    f"🛏 חדרים: {s['min_rooms']} - {s['max_rooms']}
-"
+                    f"📊 סטטוס נוכחי:\n"
+                    f"💰 מחיר: ₪{s['min_price']:,} - ₪{s['max_price']:,}\n"
+                    f"🛏 חדרים: {s['min_rooms']} - {s['max_rooms']}\n"
                     f"📍 אזור: {beach_txt}"
                 )
 
             elif text.startswith("/עזרה") or text.lower().startswith("/help") or text == "/start":
                 reply = (
-                    "🤖 דירה-האנטר — פקודות:
-
-"
-                    "/חוף 1.5 — חפש עד 1.5 ק'מ מהחוף
-"
-                    "/חוף כבוי — חזור לסריקה לפי שכונות
-"
-                    "/מחיר 5000 8000 — שנה טווח מחיר
-"
-                    "/חדרים 2 4 — שנה מספר חדרים
-"
-                    "/סטטוס — הצג הגדרות נוכחיות
-"
+                    "🤖 דירה-האנטר — פקודות:\n\n"
+                    "/חוף 1.5 — חפש עד 1.5 ק'מ מהחוף\n"
+                    "/חוף כבוי — חזור לסריקה לפי שכונות\n"
+                    "/מחיר 5000 8000 — שנה טווח מחיר\n"
+                    "/חדרים 2 4 — שנה מספר חדרים\n"
+                    "/סטטוס — הצג הגדרות נוכחיות\n"
                     "/עזרה — הצג הודעה זו"
                 )
             else:
@@ -263,5 +252,41 @@ def main():
     logger.info(f"\n🏁 Scan complete at {datetime.now().strftime('%H:%M:%S')}")
 
 
+def run_loop():
+    """לולאה ראשית — רץ כל X דקות (לפי config)"""
+    config = load_config()
+    interval = config.get("scan", {}).get("interval_minutes", 10)
+    logger.info(f"🔄 דירה-האנטר — מצב לולאה: סריקה כל {interval} דקות")
+
+    # שלח הודעת הפעלה
+    try:
+        telegram_token = get_env_or_fail("TELEGRAM_BOT_TOKEN")
+        telegram_chat_id = get_env_or_fail("TELEGRAM_CHAT_ID")
+        notifier = TelegramNotifier(telegram_token, telegram_chat_id, config)
+        notifier.send_startup_message()
+    except Exception:
+        pass
+
+    while True:
+        try:
+            main()
+        except Exception as e:
+            logger.error(f"❌ שגיאה בסריקה: {e}")
+
+        # קרא מחדש את ה-interval (אולי המשתמש שינה)
+        try:
+            config = load_config()
+            interval = config.get("scan", {}).get("interval_minutes", 10)
+        except Exception:
+            pass
+
+        logger.info(f"💤 ממתין {interval} דקות לסריקה הבאה...")
+        time.sleep(interval * 60)
+
+
 if __name__ == "__main__":
-    main()
+    # אם יש ארגומנט "once" — רץ פעם אחת ויוצא
+    if len(sys.argv) > 1 and sys.argv[1] == "once":
+        main()
+    else:
+        run_loop()
