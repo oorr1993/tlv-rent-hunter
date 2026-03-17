@@ -4,6 +4,7 @@ Yad2 Scraper - Map API with image/location support
 import requests
 import logging
 import math
+import time
 from typing import Optional
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -191,30 +192,36 @@ class Yad2Scraper:
             f"&bBox={TEL_AVIV_BBOX}"
         )
         logger.info(f"Fetching Yad2 map API...")
-        try:
-            response = self.session.get(url, timeout=20)
-            logger.info(f"Response status: {response.status_code}")
-            response.raise_for_status()
-            data = response.json()
-            markers = data.get("data", {}).get("markers", [])
-            yad1_markers = data.get("data", {}).get("yad1Markers", [])
-            all_markers = markers + yad1_markers
-            logger.info(f"API returned {len(all_markers)} listings")
-
-            with_images = sum(1 for m in all_markers if m.get("metaData", {}).get("coverImage"))
-            logger.info(f"Items with images: {with_images}/{len(all_markers)}")
-
-            for item in all_markers:
-                apt = self._parse_marker(item)
-                if apt and self._filter_apartment(apt):
-                    all_apartments.append(apt)
-
-            max_beach = self.config.get("max_distance_from_beach_km", 0)
-            logger.info(f"After filters (beach:{max_beach}km): {len(all_apartments)} apartments")
-        except requests.RequestException as e:
-            logger.error(f"Error fetching Yad2 API: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-
+        for attempt in range(3):
+            try:
+                if attempt > 0:
+                    time.sleep(5)
+                    logger.info(f"Retry {attempt}/2...")
+                response = self.session.get(url, timeout=20)
+                logger.info(f"Response status: {response.status_code}")
+                response.raise_for_status()
+                if not response.content:
+                    logger.warning(f"Empty response body on attempt {attempt+1}, retrying...")
+                    continue
+                data = response.json()
+                markers = data.get("data", {}).get("markers", [])
+                yad1_markers = data.get("data", {}).get("yad1Markers", [])
+                all_markers = markers + yad1_markers
+                logger.info(f"API returned {len(all_markers)} listings")
+                with_images = sum(1 for m in all_markers if m.get("metaData", {}).get("coverImage"))
+                logger.info(f"Items with images: {with_images}/{len(all_markers)}")
+                for item in all_markers:
+                    apt = self._parse_marker(item)
+                    if apt and self._filter_apartment(apt):
+                        all_apartments.append(apt)
+                max_beach = self.config.get("max_distance_from_beach_km", 0)
+                logger.info(f"After filters (beach:{max_beach}km): {len(all_apartments)} apartments")
+                break
+            except requests.RequestException as e:
+                logger.error(f"Error fetching Yad2 API: {e}")
+            except ValueError as e:
+                logger.error(f"Error fetching Yad2 API: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
         logger.info(f"Total apartments found: {len(all_apartments)}")
         return all_apartments
