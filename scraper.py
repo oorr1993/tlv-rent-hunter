@@ -59,6 +59,7 @@ class Apartment:
     lat: float = 0.0
     lon: float = 0.0
     distance_to_beach_km: float = -1.0
+    has_mamad: bool = False
 
     def to_dict(self):
         return asdict(self)
@@ -101,6 +102,29 @@ class Yad2Scraper:
                 # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
                 # כי החוף הוא קו מאונך לגמרי
                 dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
+
+            # ממ"ד — בודק כמה מקומות אפשריים ב-API
+            has_mamad = False
+            # Yad2 API: additionalDetails may have safeRoom/shelter
+            if details.get("safeRoom") or details.get("shelter"):
+                has_mamad = True
+            # Also check metaData.amenities / features
+            meta_raw = item.get("metaData", {})
+            amenities = meta_raw.get("amenities", []) or meta_raw.get("features", [])
+            if isinstance(amenities, list):
+                for a in amenities:
+                    a_str = str(a).lower() if not isinstance(a, dict) else str(a.get("key", "")).lower()
+                    if "mamad" in a_str or "saferoom" in a_str or "safe_room" in a_str or "shelter" in a_str:
+                        has_mamad = True
+                        break
+            # Also check in raw item for common Yad2 keys
+            if item.get("shelter") or item.get("safeRoom") or item.get("mampiMemad"):
+                has_mamad = True
+            # Check boolean flags in additionalDetails
+            for key in ["hasShelter", "hasMamad", "has_mamad", "mampiMemad", "safeRoom", "safe_room"]:
+                if details.get(key):
+                    has_mamad = True
+                    break
 
             meta = item.get("metaData", {})
             description = str(meta.get("description", ""))
@@ -152,6 +176,7 @@ class Yad2Scraper:
                 lat=lat,
                 lon=lon,
                 distance_to_beach_km=dist_beach,
+                has_mamad=has_mamad,
             )
         except Exception as e:
             logger.error(f"Error parsing item: {e}")
