@@ -1,5 +1,5 @@
 """
-Telegram Bot â ×©××××ª ××ª×¨×××ª ×¢× ×××¨××ª ×××©××ª
+Telegram Bot — שליחת התראות על דירות חדשות
 """
 import requests
 import logging
@@ -10,7 +10,7 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}"
 
 
 def get_israel_time():
-    """×©×¢×× ××©×¨×× â ×××× ×©×¢×× ×§××¥ (×©××©× ××¤× × ××× ×¨××©×× ××××¨×× ×©× ××¨×¥/×××§××××¨)"""
+    """שעון ישראל — כולל שעון קיץ (שישי לפני יום ראשון האחרון של מרץ/אוקטובר)"""
     now_utc = datetime.now(timezone.utc)
     year = now_utc.year
 
@@ -51,72 +51,77 @@ class TelegramNotifier:
 
     def _format_message(self, apt) -> str:
         if apt.score >= 85:
-            score_emoji = "ð¢"
+            score_emoji = "🟢"
         elif apt.score >= 65:
-            score_emoji = "ð¡"
+            score_emoji = "🟡"
         else:
-            score_emoji = "ð´"
+            score_emoji = "🔴"
         try:
             added = datetime.fromisoformat(apt.date_added.replace("Z", "+00:00"))
             diff = datetime.now() - added.replace(tzinfo=None)
-            if diff.total_seconds() < 3600:
-                time_ago = f"{int(diff.total_seconds()/60)} ××§××ª"
-            elif diff.total_seconds() < 86400:
-                time_ago = f"{int(diff.total_seconds()/3600)} ×©×¢××ª"
+            total_secs = diff.total_seconds()
+            if total_secs < 0 or total_secs < 120:
+                time_ago = "חדש"
+            elif total_secs < 3600:
+                time_ago = f"{int(total_secs/60)} דקות"
+            elif total_secs < 86400:
+                hours = int(total_secs / 3600)
+                time_ago = f"{'שעה' if hours == 1 else f'{hours} שעות'}"
             else:
-                time_ago = f"{diff.days} ××××"
+                days = diff.days
+                time_ago = f"{'יום' if days == 1 else f'{days} ימים'}"
         except Exception:
-            time_ago = "?"
+            time_ago = "לא ידוע"
 
         msg_lines = [
-            "ð  ×××¨× ×××©× × ××¦××!",
+            "🏠 דירה חדשה נמצאה!",
             "",
-            f"ð {apt.neighborhood}, {apt.address}",
-            f"ð {apt.rooms} ×××¨×× | {apt.area_sqm} ×''×¨ | ×§××× {apt.floor}",
-            f"ð° âª{apt.price:,} ×××××©",
+            f"📍 {apt.neighborhood}, {apt.address}",
+            f"🛏 {apt.rooms} חדרים | {apt.area_sqm} מ''ר | קומה {apt.floor}",
+            f"💰 ₪{apt.price:,} לחודש",
         ]
 
-        # ××¦× ××¨××§ ×××××£ ×× ××××
+        # הצג מרחק מהחוף אם זמין
         if hasattr(apt, "distance_to_beach_km") and apt.distance_to_beach_km >= 0:
-            msg_lines.append(f"ð {apt.distance_to_beach_km:.1f} ×§''× ×××××£")
+            msg_lines.append(f"🏖 {apt.distance_to_beach_km:.1f} ק''מ מהחוף")
 
         msg_lines.append("")
 
         if apt.description:
-            msg_lines.append(f"ð {apt.description[:200]}")
+            msg_lines.append(f"📝 {apt.description[:200]}")
             msg_lines.append("")
 
-        msg_lines.append(f"â° ×¢××ª× ××¤× ×: {time_ago}")
-        msg_lines.append(f"{score_emoji} ×¦×××: {apt.score}/100")
+        msg_lines.append(f"⏰ עלתה לפני: {time_ago}")
+        msg_lines.append(f"{score_emoji} ציון: {apt.score}/100")
 
         if apt.contact_name:
-            msg_lines.append(f"ð¤ {apt.contact_name}")
+            msg_lines.append(f"👤 {apt.contact_name}")
         if apt.url:
             msg_lines.append(f"")
-            msg_lines.append(f"ð {apt.url}")
+            msg_lines.append(f"🔗 {apt.url}")
 
         return "\n".join(msg_lines)
 
     def _build_keyboard(self, apt) -> dict:
         buttons = []
         if apt.url:
-            buttons.append([{"text": "ð ×¤×ª× ××××¢× ×××2", "url": apt.url}])
+            buttons.append([{"text": "🔗 פתח מודעה ביד2", "url": apt.url}])
         if apt.contact_phone:
             phone = apt.contact_phone.replace("-","").replace(" ","")
-            buttons.append([{"text": f"ð {apt.contact_phone}", "url": f"tel:{phone}"}])
+            buttons.append([{"text": f"📞 {apt.contact_phone}", "url": f"tel:{phone}"}])
             wa_phone = ("972" + phone.lstrip("0")) if not phone.startswith("972") else phone
-            wa_text = f"×××, ×¨×××ª× ××ª ×××××¢× ×××2 ××××¨× ×{apt.neighborhood}. ××× ××× ×¢×××× ×¤× ×××?"
-            buttons.append([{"text": "ð¬ WhatsApp", "url": f"https://wa.me/{wa_phone}?text={requests.utils.quote(wa_text)}"}])
+            wa_text = f"היי, ראיתי את המודעה ביד2 לדירה ב{apt.neighborhood}. האם היא עדיין פנויה?"
+            buttons.append([{"text": "💬 WhatsApp", "url": f"https://wa.me/{wa_phone}?text={requests.utils.quote(wa_text)}"}])
         return {"inline_keyboard": buttons}
 
     def send_apartment_alert(self, apt) -> bool:
         if self._is_quiet_hours():
-            logger.info(f"Quiet hours â skipping {apt.id}")
+            logger.info(f"Quiet hours — skipping {apt.id}")
             return False
         message = self._format_message(apt)
         keyboard = self._build_keyboard(apt)
         try:
-            # × ×¡× ××©××× ×¢× ×ª××× × ××-CDN ×©× ××2
+            # נסה לשלוח עם תמונה מה-CDN של יד2
             if apt.image_url and self.config.get("send_photos", True):
                 # Telegram caption limit = 1024 chars
                 caption = message[:1024] if len(message) > 1024 else message
@@ -131,12 +136,12 @@ class TelegramNotifier:
                     timeout=20
                 )
                 if r.status_code == 200:
-                    logger.info(f"â Photo sent for {apt.id}")
+                    logger.info(f"✅ Photo sent for {apt.id}")
                     return True
                 logger.warning(f"Photo failed ({r.status_code}): {r.text[:150]}")
                 # If photo URL rejected by Telegram, fall through to text
 
-            # Fallback: ××§×¡× ××××
+            # Fallback: טקסט בלבד
             r = requests.post(
                 f"{self.api_url}/sendMessage",
                 json={
@@ -148,7 +153,7 @@ class TelegramNotifier:
                 timeout=15
             )
             if r.status_code == 200:
-                logger.info(f"â Text sent for {apt.id}")
+                logger.info(f"✅ Text sent for {apt.id}")
                 return True
             logger.error(f"Telegram error {r.status_code}: {r.text[:200]}")
             return False
@@ -159,9 +164,9 @@ class TelegramNotifier:
     def send_summary(self, apartments: list, total_scanned: int) -> bool:
         if not apartments: return True
         msg = (
-            f"ð ×¡×××× ×¡×¨××§×\n"
-            f"× ×¡×¨×§×: {total_scanned} | × ×©×××: {len(apartments)}\n"
-            f"âª{min(a.price for a in apartments):,} - âª{max(a.price for a in apartments):,}"
+            f"📊 סיכום סריקה\n"
+            f"נסרקו: {total_scanned} | נשלחו: {len(apartments)}\n"
+            f"₪{min(a.price for a in apartments):,} - ₪{max(a.price for a in apartments):,}"
         )
         try:
             r = requests.post(f"{self.api_url}/sendMessage",
@@ -172,6 +177,6 @@ class TelegramNotifier:
     def send_startup_message(self) -> bool:
         try:
             r = requests.post(f"{self.api_url}/sendMessage",
-                json={"chat_id": self.chat_id, "text": "ð ×××¨×-××× ××¨ ×××¤×¢×! ×©×× /×¢××¨× ××¨×©×××ª ×¤×§××××ª."}, timeout=10)
+                json={"chat_id": self.chat_id, "text": "🚀 דירה-האנטר הופעל! שלח /עזרה לרשימת פקודות."}, timeout=10)
             return r.status_code == 200
         except Exception: return False
