@@ -21,7 +21,7 @@ class ApartmentDB:
         self._init_db()
 
     def _init_db(self):
-        """יוצר את הטבלאות אם לא קיימות"""       
+        """יוצר את הטבלאות אם לא קיימות"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS apartments (
@@ -98,7 +98,7 @@ class ApartmentDB:
                     apt.url, apt.image_url, apt.date_added, apt.score,
                     json.dumps(apt.raw_data, ensure_ascii=False)
                 ))
-                # UPDATE — עדכו פרטים (מחיר/ציון וכו') בלי לגעת ב-notified
+                # UPDATE — עדכן פרטים (מחיר/ציון וכו') בלי לגעת ב-notified
                 conn.execute("""
                     UPDATE apartments SET
                         price = ?, rooms = ?, area_sqm = ?, floor = ?,
