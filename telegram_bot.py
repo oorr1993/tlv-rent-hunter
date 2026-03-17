@@ -81,6 +81,10 @@ class TelegramNotifier:
             f"💰 ₪{apt.price:,} לחודש",
         ]
 
+        # ממ"ד
+        if hasattr(apt, "has_mamad"):
+            msg_lines.append(f"🛡 ממ\"ד: {'יש ✅' if apt.has_mamad else 'אין ❌'}")
+
         # הצג מרחק מהחוף אם זמין
         if hasattr(apt, "distance_to_beach_km") and apt.distance_to_beach_km >= 0:
             msg_lines.append(f"🏖 {apt.distance_to_beach_km:.1f} ק''מ מהחוף")
