@@ -1,34 +1,39 @@
 """
-yad2 scraper - Yad2 Rental Apartment Scraper
-Uses the Yad2 map API endpoint
+Yad2 Scraper - Map API with image/location support
 """
 import requests
 import logging
+import math
 from typing import Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
-YAD2_ITEM_URL = "https://www.yad2.co.il/item/{token}"
-
-# Tel Aviv full bounding box (lat_min,lon_min,lat_max,lon_max)
+YAD2_ITEM_URL = "https://www.yad2.co.il/realestate/item/tel-aviv-area/{token}"
 TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
+# חוף הים - קוארדינטות מרכזיות של קו החוף בת"א (כ-34.76 מזרח)
+# קו החוף של ת"א נמצא בסביבות lon=34.758-34.763
+BEACH_LON = 34.761  # קו הרוחב של החוף
+
 DEFAULT_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
     "Origin": "https://www.yad2.co.il",
     "Referer": "https://www.yad2.co.il/realestate/rent/tel-aviv-area",
-    "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-site",
 }
+
+
+def haversine_km(lat1, lon1, lat2, lon2) -> float:
+    """מחשב מרחק בק"מ בין שתי נקודות (Haversine formula)"""
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return R * 2 * math.asin(math.sqrt(a))
 
 
 @dataclass
@@ -50,13 +55,15 @@ class Apartment:
     date_added: str
     raw_data: dict
     score: int = 0
+    lat: float = 0.0
+    lon: float = 0.0
+    distance_to_beach_km: float = -1.0
 
     def to_dict(self):
         return asdict(self)
 
 
 class Yad2Scraper:
-
     def __init__(self, config: dict):
         self.config = config["search"]
         self.session = requests.Session()
@@ -69,7 +76,6 @@ class Yad2Scraper:
                 return None
 
             price = int(item.get("price", 0) or 0)
-
             details = item.get("additionalDetails", {})
             rooms = float(details.get("roomsCount", 0) or 0)
             area = int(details.get("squareMeter", 0) or 0)
@@ -82,18 +88,36 @@ class Yad2Scraper:
             city = addr.get("city", {}).get("text", "תל אביב יפו")
             address = f"{street} {house_num}".strip() if street else city
 
-            description = str(item.get("metaData", {}).get("description", ""))
-            contact_name = str(item.get("contactInfo", {}).get("contactName", ""))
-            contact_phone = str(item.get("contactInfo", {}).get("phone1", {}).get("phoneNumber", ""))
+            # קוארדינטות
+            coords = addr.get("coords", {})
+            lat = float(coords.get("lat", 0) or 0)
+            lon = float(coords.get("lon", 0) or 0)
 
-            images = item.get("images", [])
+            # מרחק מהחוף (רק אם יש קוארדינטות)
+            dist_beach = -1.0
+            if lat and lon:
+                # החוף של ת"א: lat ~ 32.08 (בממוצע), lon ~ 34.761
+                # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
+                # כי החוף הוא קו מאונך לגמרי
+                dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
+
+            meta = item.get("metaData", {})
+            description = str(meta.get("description", ""))
+
+            # תמונות - הAPI מחזיר אותן ב-metaData
             image_url = None
-            if images and isinstance(images, list):
-                img = images[0]
-                if isinstance(img, dict):
-                    image_url = img.get("src", img.get("url", ""))
-                elif isinstance(img, str):
-                    image_url = img
+            cover = meta.get("coverImage", "")
+            if cover:
+                image_url = cover
+            else:
+                images_list = meta.get("images", [])
+                if images_list:
+                    image_url = images_list[0]
+
+            contact = item.get("contactInfo", {})
+            contact_name = str(contact.get("contactName", ""))
+            phone_obj = contact.get("phone1", {})
+            contact_phone = str(phone_obj.get("phoneNumber", "") if isinstance(phone_obj, dict) else "")
 
             date_added = str(item.get("date", datetime.now().isoformat()))
             title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
@@ -116,6 +140,9 @@ class Yad2Scraper:
                 image_url=image_url,
                 date_added=date_added,
                 raw_data=item,
+                lat=lat,
+                lon=lon,
+                distance_to_beach_km=dist_beach,
             )
         except Exception as e:
             logger.error(f"Error parsing item: {e}")
@@ -125,38 +152,36 @@ class Yad2Scraper:
         config = self.config
 
         if apt.price > 0:
-            if apt.price < config.get("min_price", 0):
-                return False
-            if apt.price > config.get("max_price", 999999):
-                return False
-
+            if apt.price < config.get("min_price", 0): return False
+            if apt.price > config.get("max_price", 999999): return False
         if apt.rooms > 0:
-            if apt.rooms < config.get("min_rooms", 0):
-                return False
-            if apt.rooms > config.get("max_rooms", 99):
-                return False
-
+            if apt.rooms < config.get("min_rooms", 0): return False
+            if apt.rooms > config.get("max_rooms", 99): return False
         if apt.area_sqm > 0 and config.get("min_area_sqm"):
-            if apt.area_sqm < config["min_area_sqm"]:
+            if apt.area_sqm < config["min_area_sqm"]: return False
+
+        # פילטר מרחק מהחוף
+        max_beach_km = config.get("max_distance_from_beach_km", 0)
+        if max_beach_km and max_beach_km > 0 and apt.distance_to_beach_km >= 0:
+            if apt.distance_to_beach_km > max_beach_km:
                 return False
 
-        neighborhoods = config.get("neighborhoods", [])
-        if neighborhoods and apt.neighborhood:
-            if not any(n.strip() in apt.neighborhood for n in neighborhoods):
-                return False
+        # פילטר שכונות (אם אין פילטר חוף, בודקים שכונות)
+        if not max_beach_km:
+            neighborhoods = config.get("neighborhoods", [])
+            if neighborhoods and apt.neighborhood:
+                if not any(n.strip() in apt.neighborhood for n in neighborhoods):
+                    return False
 
         exclude = config.get("keywords_exclude", [])
         full_text = f"{apt.title} {apt.description}".lower()
         for kw in exclude:
-            if kw.lower() in full_text:
-                return False
+            if kw.lower() in full_text: return False
 
         return True
 
     def scrape(self, max_pages: int = 3) -> list:
         all_apartments = []
-
-        # Build URL manually - bBox commas must NOT be percent-encoded
         url = (
             f"{YAD2_MAP_API}"
             f"?city=5000&area=1&region=3"
@@ -166,26 +191,26 @@ class Yad2Scraper:
             f"&bBox={TEL_AVIV_BBOX}"
         )
         logger.info(f"Fetching Yad2 map API...")
-
         try:
             response = self.session.get(url, timeout=20)
             logger.info(f"Response status: {response.status_code}")
             response.raise_for_status()
-
             data = response.json()
             markers = data.get("data", {}).get("markers", [])
             yad1_markers = data.get("data", {}).get("yad1Markers", [])
             all_markers = markers + yad1_markers
-
             logger.info(f"API returned {len(all_markers)} listings")
+
+            with_images = sum(1 for m in all_markers if m.get("metaData", {}).get("coverImage"))
+            logger.info(f"Items with images: {with_images}/{len(all_markers)}")
 
             for item in all_markers:
                 apt = self._parse_marker(item)
                 if apt and self._filter_apartment(apt):
                     all_apartments.append(apt)
 
-            logger.info(f"After price/room/neighborhood filter: {len(all_apartments)} apartments")
-
+            max_beach = self.config.get("max_distance_from_beach_km", 0)
+            logger.info(f"After filters (beach:{max_beach}km): {len(all_apartments)} apartments")
         except requests.RequestException as e:
             logger.error(f"Error fetching Yad2 API: {e}")
         except Exception as e:
@@ -193,6 +218,3 @@ class Yad2Scraper:
 
         logger.info(f"Total apartments found: {len(all_apartments)}")
         return all_apartments
-
-    def get_item_details(self, token: str) -> Optional[dict]:
-        return None
