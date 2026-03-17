@@ -15,9 +15,9 @@ YAD2_MAP_API = "https://gw.yad2.co.il/realestate-feed/rent/map"
 YAD2_ITEM_URL = "https://www.yad2.co.il/realestate/item/tel-aviv-area/{token}"
 TEL_AVIV_BBOX = "32.029253,34.734553,32.146082,34.860195"
 
-# ×××£ ××× - ×§×××¨××× ×××ª ××¨×××××ª ×©× ×§× ××××£ ××ª"× (×-34.76 ×××¨×)
-# ×§× ××××£ ×©× ×ª"× × ××¦× ××¡×××××ª lon=34.758-34.763
-BEACH_LON = 34.761  # ×§× ××¨××× ×©× ××××£
+# חוף הים - קוברדינטות מרכזיות של קו החוף בת” (כ-34.76 מזרח)
+# קו החוף של ת"א נמצא בסביבות lon=34.758-34.763
+BEACH_LON = 34.761  # קו הרוחב של החוף
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -29,7 +29,7 @@ DEFAULT_HEADERS = {
 
 
 def haversine_km(lat1, lon1, lat2, lon2) -> float:
-    """×××©× ××¨××§ ××§'× ××× ×©×ª× × ×§××××ª (Haversine formula)"""
+    """מחשב מרחק בק"מ בין שתי נקודות (Haversine formula)"""
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -86,26 +86,26 @@ class Yad2Scraper:
             neighborhood = addr.get("neighborhood", {}).get("text", "")
             street = addr.get("street", {}).get("text", "")
             house_num = addr.get("house", {}).get("number", "")
-            city = addr.get("city", {}).get("text", "×ª× ×××× ××¤×")
+            city = addr.get("city", {}).get("text", "תל אביב יפו")
             address = f"{street} {house_num}".strip() if street else city
 
-            # ×§×××¨××× ×××ª
+            # קוארדינטות
             coords = addr.get("coords", {})
             lat = float(coords.get("lat", 0) or 0)
             lon = float(coords.get("lon", 0) or 0)
 
-            # ××¨××§ ×××××£ (×¨×§ ×× ××© ×§×××¨××× ×××ª)
+            # מרחק מהחוף (רק אם יש קוברדינטות)
             dist_beach = -1.0
             if lat and lon:
-                # ××××£ ×©× ×ª"×: lat ~ 32.08 (×××××¦×¢), lon ~ 34.761
-                # ×××©××× ××¨××§ ×¨×§ ×¢× ×¦××¨ ××¨××× (×××¨×-××¢×¨×)
-                # ×× ××××£ ××× ×§× ×××× × ××××¨×
+                # החוף של ת"א: lat ~ 32.08 (בממוצע), lon ~ 34.761
+                # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
+                # כי החוף הוא קו מאונך לגמרי
                 dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
 
             meta = item.get("metaData", {})
             description = str(meta.get("description", ""))
 
-            # ×ª××× ××ª - ×API ×××××¨ ×××ª× ×-metaData
+            # תמונות - הAPI מחזיר אותן ב-metaData
             image_url = None
             cover = meta.get("coverImage", "")
             if cover:
@@ -121,7 +121,7 @@ class Yad2Scraper:
             contact_phone = str(phone_obj.get("phoneNumber", "") if isinstance(phone_obj, dict) else "")
 
             date_added = str(item.get("date", datetime.now().isoformat()))
-            title = f"{rooms} ××' ×{neighborhood}" if neighborhood else f"{rooms} ××' ×{city}"
+            title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
             url = YAD2_ITEM_URL.format(token=token)
 
             return Apartment(
@@ -161,13 +161,13 @@ class Yad2Scraper:
         if apt.area_sqm > 0 and config.get("min_area_sqm"):
             if apt.area_sqm < config["min_area_sqm"]: return False
 
-        # ×¤××××¨ ××¨××§ ×××××£
+        # פילטר מרחק מהחוף
         max_beach_km = config.get("max_distance_from_beach_km", 0)
         if max_beach_km and max_beach_km > 0 and apt.distance_to_beach_km >= 0:
             if apt.distance_to_beach_km > max_beach_km:
                 return False
 
-        # ×¤××××¨ ×©××× ××ª (×× ××× ×¤××××¨ ×××£, ××××§×× ×©××× ××ª)
+        # פילטר שכונות (אם אין פילטר חוף, בודקים שכונות)
         if not max_beach_km:
             neighborhoods = config.get("neighborhoods", [])
             if neighborhoods and apt.neighborhood:
@@ -218,10 +218,10 @@ class Yad2Scraper:
                 logger.info(f"Response status: {response.status_code}")
 
                 if response.status_code == 403:
-                    logger.warning("Got 403 Forbidden â Yad2 is blocking this IP")
+                    logger.warning("Got 403 Forbidden — Yad2 is blocking this IP")
                     continue
                 if response.status_code == 429:
-                    logger.warning("Got 429 Rate Limited â waiting longer...")
+                    logger.warning("Got 429 Rate Limited — waiting longer...")
                     time.sleep(30)
                     continue
 
