@@ -60,7 +60,7 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
     """
     קורא הודעות חדשות מהבוט ומעדכן config בהתאם.
     פקודות נתמכות:
-      /חוף 1.5    - דירות עד 1.5 ק"מ מהחוף
+      /חוף 1.5    - דירות עד 1.5 ק'מ מהחוף
       /חוף כבוי   - בטל פילטר חוף (חזור לשכונות)
       /מחיר 5000 8000  - שנה טווח מחיר
       /חדרים 2 4  - שנה טווח חדרים
@@ -104,11 +104,11 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
                         try:
                             km = float(arg)
                             config["search"]["max_distance_from_beach_km"] = km
-                            reply = f"✅ מחפש דירות עד {km} ק"מ מהחוף"
+                            reply = f"✅ מחפש דירות עד {km} ק'מ מהחוף"
                         except ValueError:
-                            reply = "❌ שגיאה: /חוף 1.5 (מספר בק"מ)"
+                            reply = "❌ שגיאה: /חוף 1.5 (מספר בק'מ)"
                 else:
-                    reply = "📍 שימוש: /חוף 1.5 (מרחק בק"מ מהחוף)\n/חוף כבוי לביטול"
+                    reply = "📍 שימוש: /חוף 1.5 (מרחק בק'מ מהחוף)\n/חוף כבוי לביטול"
                 changed = True
 
             elif text.startswith("/מחיר") or text.lower().startswith("/price"):
@@ -144,7 +144,7 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
             elif text.startswith("/סטטוס") or text.lower().startswith("/status"):
                 s = config["search"]
                 beach = s.get("max_distance_from_beach_km", 0)
-                beach_txt = f"{beach} ק"מ מהחוף" if beach else "לפי שכונות"
+                beach_txt = f"{beach} ק'מ מהחוף" if beach else "לפי שכונות"
                 reply = (
                     f"📊 סטטוס נוכחי:\n"
                     f"💰 מחיר: ₪{s['min_price']:,} - ₪{s['max_price']:,}\n"
@@ -155,7 +155,7 @@ def process_telegram_commands(token: str, chat_id: str, config: dict) -> dict:
             elif text.startswith("/עזרה") or text.lower().startswith("/help") or text == "/start":
                 reply = (
                     "🤖 דירה-האנטר — פקודות:\n\n"
-                    "/חוף 1.5 — חפש עד 1.5 ק"מ מהחוף\n"
+                    "/חוף 1.5 — חפש עד 1.5 ק'מ מהחוף\n"
                     "/חוף כבוי — חזור לסריקה לפי שכונות\n"
                     "/מחיר 5000 8000 — שנה טווח מחיר\n"
                     "/חדרים 2 4 — שנה מספר חדרים\n"
