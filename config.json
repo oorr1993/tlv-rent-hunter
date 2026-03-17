@@ -45,8 +45,8 @@
   "telegram": {
     "enabled": true,
     "send_photos": true,
-    "quiet_hours_start": "",
-    "quiet_hours_end": ""
+    "quiet_hours_start": "00:00",
+    "quiet_hours_end": "10:00"
   },
   "scoring": {
     "price_weight": 30,
