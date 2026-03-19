@@ -135,8 +135,13 @@ class Yad2Scraper:
                 or item.get("DateOfEntry")
                 or item.get("date")
                 or item.get("createdAt")
-                or datetime.now().isoformat()
+                or meta.get("updatedAt")
+                or meta.get("createdAt")
+                or ""
             )
+            if not date_added:
+                date_added = datetime.now().isoformat()
+                logger.debug(f"No date found for {token}, using current time")
             title = f"{rooms} חד' ב{neighborhood}" if neighborhood else f"{rooms} חד' ב{city}"
             url = YAD2_ITEM_URL.format(token=token)
 

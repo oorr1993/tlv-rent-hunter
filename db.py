@@ -202,12 +202,15 @@ class ApartmentDB:
 
     def mark_notified(self, apartment_id: str):
         """מסמן דירה כ'נשלחה התראה'"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "UPDATE apartments SET notified = 1 WHERE id = ?",
-                (apartment_id,)
-            )
-            conn.commit()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE apartments SET notified = 1 WHERE id = ?",
+                    (apartment_id,)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error marking apartment {apartment_id} as notified: {e}")
 
     def log_scan(self, source: str, total: int, new: int, errors: str = ""):
         """מתעד סריקה"""

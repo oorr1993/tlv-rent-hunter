@@ -56,21 +56,39 @@ class TelegramNotifier:
             score_emoji = "🟡"
         else:
             score_emoji = "🔴"
+        # חישוב זמן העלאה מדויק
+        exact_time = ""
+        time_ago = ""
         try:
             added = datetime.fromisoformat(apt.date_added.replace("Z", "+00:00"))
-            diff = datetime.now() - added.replace(tzinfo=None)
+            added_naive = added.replace(tzinfo=None)
+
+            # זמן מדויק בשעון ישראל
+            il_now = get_israel_time()
+            # המרה לשעון ישראל: אם התאריך ב-UTC, נוסיף offset
+            if added.tzinfo is not None:
+                il_offset = il_now - datetime.now(timezone.utc)
+                added_il = added_naive + il_offset
+            else:
+                added_il = added_naive
+
+            exact_time = added_il.strftime("%d/%m/%Y %H:%M")
+
+            # זמן יחסי
+            diff = datetime.now() - added_naive
             total_secs = diff.total_seconds()
             if total_secs < 0 or total_secs < 120:
-                time_ago = "חדש"
+                time_ago = "עכשיו"
             elif total_secs < 3600:
-                time_ago = f"{int(total_secs/60)} דקות"
+                time_ago = f"לפני {int(total_secs/60)} דקות"
             elif total_secs < 86400:
                 hours = int(total_secs / 3600)
-                time_ago = f"{'שעה' if hours == 1 else f'{hours} שעות'}"
+                time_ago = f"לפני {'שעה' if hours == 1 else f'{hours} שעות'}"
             else:
                 days = diff.days
-                time_ago = f"{'יום' if days == 1 else f'{days} ימים'}"
+                time_ago = f"לפני {'יום' if days == 1 else f'{days} ימים'}"
         except Exception:
+            exact_time = ""
             time_ago = "לא ידוע"
 
         msg_lines = [
@@ -95,7 +113,10 @@ class TelegramNotifier:
             msg_lines.append(f"📝 {apt.description[:200]}")
             msg_lines.append("")
 
-        msg_lines.append(f"⏰ עלתה לפני: {time_ago}")
+        if exact_time:
+            msg_lines.append(f"⏰ עלתה ביד2: {exact_time} ({time_ago})")
+        else:
+            msg_lines.append(f"⏰ עלתה: {time_ago}")
         msg_lines.append(f"{score_emoji} ציון: {apt.score}/100")
 
         if apt.contact_name:
