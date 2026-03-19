@@ -165,6 +165,65 @@ class TelegramNotifier:
             logger.error(f"Error sending alert for {apt.id}: {e}")
             return False
 
+    def send_price_change_alert(self, change: dict) -> bool:
+        """שולח הודעה על שינוי מחיר של דירה"""
+        if self._is_quiet_hours():
+            logger.info(f"Quiet hours — skipping price change for {change['apartment_id']}")
+            return False
+
+        diff = change["new_price"] - change["old_price"]
+        pct = round((diff / change["old_price"]) * 100, 1)
+
+        if diff < 0:
+            emoji = "📉"
+            direction = "ירד"
+            diff_str = f"-₪{abs(diff):,}"
+        else:
+            emoji = "📈"
+            direction = "עלה"
+            diff_str = f"+₪{diff:,}"
+
+        msg_lines = [
+            f"{emoji} עדכון מחיר!",
+            "",
+            f"📍 {change.get('neighborhood', '?')}, {change.get('address', '?')}",
+            f"🛏 {change.get('rooms', '?')} חדרים | {change.get('area_sqm', '?')} מ''ר | קומה {change.get('floor', '?')}",
+            "",
+            f"💰 מחיר ישן: ₪{change['old_price']:,}",
+            f"💰 מחיר חדש: ₪{change['new_price']:,}",
+            f"{'🟢' if diff < 0 else '🔴'} המחיר {direction} ב-{diff_str} ({pct:+.1f}%)",
+        ]
+
+        url = change.get("url")
+        if url:
+            msg_lines.append("")
+            msg_lines.append(f"🔗 {url}")
+
+        message = "\n".join(msg_lines)
+
+        try:
+            keyboard = {"inline_keyboard": []}
+            if url:
+                keyboard["inline_keyboard"].append([{"text": "🔗 פתח מודעה ביד2", "url": url}])
+
+            r = requests.post(
+                f"{self.api_url}/sendMessage",
+                json={
+                    "chat_id": self.chat_id,
+                    "text": message,
+                    "reply_markup": keyboard,
+                },
+                timeout=15
+            )
+            if r.status_code == 200:
+                logger.info(f"✅ Price change sent for {change['apartment_id']}: {diff_str}")
+                return True
+            logger.error(f"Telegram error {r.status_code}: {r.text[:200]}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending price change for {change['apartment_id']}: {e}")
+            return False
+
     def send_summary(self, apartments: list, total_scanned: int) -> bool:
         if not apartments: return True
         msg = (
