@@ -48,6 +48,17 @@ class ApartmentDB:
                 )
             """)
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS price_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    apartment_id TEXT,
+                    old_price INTEGER,
+                    new_price INTEGER,
+                    changed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    notified INTEGER DEFAULT 0,
+                    FOREIGN KEY (apartment_id) REFERENCES apartments(id)
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -119,6 +130,67 @@ class ApartmentDB:
         except Exception as e:
             logger.error(f"Error saving apartment {apt.id}: {e}")
             return False
+
+    def check_price_change(self, apartment_id: str, new_price: int) -> dict:
+        """בודק אם המחיר השתנה מאז השמירה האחרונה. מחזיר dict עם פרטים או None"""
+        if not new_price:
+            return None
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute(
+                    "SELECT price FROM apartments WHERE id = ? AND notified = 1",
+                    (apartment_id,)
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None  # דירה חדשה או שלא נשלחה — לא רלוונטי
+                old_price = row[0]
+                if old_price and old_price != new_price:
+                    # שמור בהיסטוריה
+                    conn.execute("""
+                        INSERT INTO price_history (apartment_id, old_price, new_price)
+                        VALUES (?, ?, ?)
+                    """, (apartment_id, old_price, new_price))
+                    conn.commit()
+                    diff = new_price - old_price
+                    pct = round((diff / old_price) * 100, 1)
+                    return {
+                        "apartment_id": apartment_id,
+                        "old_price": old_price,
+                        "new_price": new_price,
+                        "diff": diff,
+                        "pct": pct,
+                    }
+        except Exception as e:
+            logger.error(f"Error checking price change for {apartment_id}: {e}")
+        return None
+
+    def get_unsent_price_changes(self) -> list:
+        """מחזיר שינויי מחיר שעוד לא נשלחו"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT ph.id, ph.apartment_id, ph.old_price, ph.new_price, ph.changed_at,
+                           a.neighborhood, a.address, a.rooms, a.area_sqm, a.floor, a.url
+                    FROM price_history ph
+                    JOIN apartments a ON ph.apartment_id = a.id
+                    WHERE ph.notified = 0
+                    ORDER BY ph.changed_at DESC
+                """)
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting unsent price changes: {e}")
+            return []
+
+    def mark_price_change_notified(self, price_history_id: int):
+        """מסמן שינוי מחיר כ'נשלח'"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE price_history SET notified = 1 WHERE id = ?",
+                (price_history_id,)
+            )
+            conn.commit()
 
     def mark_notified(self, apartment_id: str):
         """מסמן דירה כ'נשלחה התראה'"""
