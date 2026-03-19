@@ -198,6 +198,17 @@ class Yad2Scraper:
                 if not any(n.strip() in apt.neighborhood for n in neighborhoods):
                     return False
 
+        # פילטר גיל מודעה — סנן מודעות ישנות מדי
+        max_age = config.get("max_listing_age_hours", 48)
+        if max_age and apt.date_added:
+            try:
+                added = datetime.fromisoformat(apt.date_added.replace("Z", "+00:00"))
+                age_hours = (datetime.now() - added.replace(tzinfo=None)).total_seconds() / 3600
+                if age_hours > max_age:
+                    return False
+            except Exception:
+                pass  # אם אין תאריך תקין, לא מסננים
+
         full_text = f"{apt.title} {apt.description}".lower()
 
         # מילות חובה — אם מוגדרות, חייבת להכיל לפחות אחת

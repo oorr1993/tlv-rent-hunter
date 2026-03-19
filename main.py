@@ -215,6 +215,7 @@ def main():
     logger.info(f"Found {len(apartments)} apartments matching filters")
 
     pending_apartments = []
+    skipped_dup = 0
     for apt in apartments:
         apt.score = scorer.score(apt)
         # בדוק שינוי מחיר לפני שמירה (כדי להשוות למחיר הישן)
@@ -222,13 +223,21 @@ def main():
         if price_change:
             logger.info(f"  [💰 PRICE] {apt.neighborhood} | ₪{price_change['old_price']:,} → ₪{price_change['new_price']:,} ({price_change['pct']:+.1f}%)")
         if db.is_unsent(apt.id):
-            threshold = config.get("scan", {}).get("score_threshold", 0)
-            if apt.score >= threshold:
-                pending_apartments.append(apt)
-                status = "NEW" if db.is_new(apt.id) else "PENDING"
-                beach_info = f" | {apt.distance_to_beach_km:.1f}km חוף" if apt.distance_to_beach_km >= 0 else ""
-                logger.info(f"  [{status}] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
+            # בדיקה כפולה: אולי דירה זהה כבר נשלחה עם token אחר
+            if db.is_duplicate_by_content(apt.neighborhood, apt.address, apt.rooms, apt.price):
+                logger.info(f"  [DUP] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}, {apt.address} — כבר נשלחה בעבר")
+                db.mark_notified(apt.id)  # סמן כדי שלא תופיע שוב
+                skipped_dup += 1
+            else:
+                threshold = config.get("scan", {}).get("score_threshold", 0)
+                if apt.score >= threshold:
+                    pending_apartments.append(apt)
+                    status = "NEW" if db.is_new(apt.id) else "PENDING"
+                    beach_info = f" | {apt.distance_to_beach_km:.1f}km חוף" if apt.distance_to_beach_km >= 0 else ""
+                    logger.info(f"  [{status}] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
         db.save_apartment(apt)
+    if skipped_dup:
+        logger.info(f"  ⏭ Skipped {skipped_dup} content-duplicate apartments")
 
     logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} pending")
 

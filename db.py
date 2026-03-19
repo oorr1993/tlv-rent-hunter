@@ -87,6 +87,25 @@ class ApartmentDB:
             )
             return cursor.fetchone() is None
 
+    def is_duplicate_by_content(self, neighborhood: str, address: str, rooms: float, price: int) -> bool:
+        """בודק אם דירה דומה כבר נשלחה (אותה שכונה+כתובת+חדרים+מחיר דומה).
+        תופס מקרים שבהם מודעה נמחקה ופורסמה מחדש עם token חדש."""
+        if not address or not neighborhood:
+            return False
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("""
+                    SELECT 1 FROM apartments
+                    WHERE neighborhood = ? AND address = ? AND rooms = ?
+                    AND notified = 1
+                    AND ABS(price - ?) < ?
+                    LIMIT 1
+                """, (neighborhood, address, rooms, price, max(500, price * 0.1)))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Error checking content duplicate: {e}")
+            return False
+
     def is_unsent(self, apartment_id: str) -> bool:
         """בודק אם הדירה עוד לא נשלחה התראה עליה (חדשה לגמרי OR נראתה בשעות שקטות)"""
         with sqlite3.connect(self.db_path) as conn:
