@@ -1,25 +1,4 @@
-פילטרמרחקחמדהבחוףחדבפילטרשכונותאםאיןפילטרחוףבודקיםשכונותפילטרטריות—רקמודעותמשעותאחרונותexx_caegpet_ hEoxucresp t=i ocno nafsi ge.:g
-e t ( " m a x _ l i s t ilnogg_gaegre._ehroruorrs("f," E4r8r)o
-r   p a r s i n gi fi tmeamx:_ a{gee}_"h)o
-u r s   >   0   a n d   arpett.udrant eN_oanded
-e
-d : 
-    d e f   _ f i l t e rt_rayp:a
-    r t m e n t ( s e l f ,   a p t :a d"dAepda r=t mdeantte"t)i m-e>. fbrooomli:s
-    o f o r m a t ( acpotn.fdiagt e=_ asdedlefd..croenpfliagc
-    e
-    ( " Z " ,   " + 0i0f: 0a0p"t).)p
-    r i c e   >   0 : 
-                  a d d e d _infa iavpet .=p raidcdee d<. rceopnlfaicge.(gtezti(n"fmoi=nN_opnrei)c
-                  e " ,   0 ) :   r e t u r n   F aalgsee 
-                  =   d a t e t i m e . n oiwf( )a p-t .apdrdiecde_ n>a icvoen
-                  f i g . g e t ( " m a x _ p r i cief" ,a g9e9 9>9 9t9i)m:e dreelttuar(nh oFuarlss=em
-                  a x _ a g e _ h oiufr sa)p:t
-                  . r o o m s   >   0 : 
-                                    r e t uirfn  aFpatl.sreo
-                                    o m s   <   c o n f i g .egxecte(p"tm i(nV_arlouoemEsr"r,o r0,) :T yrpeetEurrrno rF)a:l
-                                    s e 
-                                                             i fp aaspst . r#o oאםm sאי ן >"""
+"""
 Yad2 Scraper - Map API with image/location support
 """
 import requests
@@ -80,7 +59,6 @@ class Apartment:
     lat: float = 0.0
     lon: float = 0.0
     distance_to_beach_km: float = -1.0
-    has_mamad: bool = False
 
     def to_dict(self):
         return asdict(self)
@@ -123,29 +101,6 @@ class Yad2Scraper:
                 # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
                 # כי החוף הוא קו מאונך לגמרי
                 dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
-
-            # ממ"ד — בודק כמה מקומות אפשריים ב-API
-            has_mamad = False
-            # Yad2 API: additionalDetails may have safeRoom/shelter
-            if details.get("safeRoom") or details.get("shelter"):
-                has_mamad = True
-            # Also check metaData.amenities / features
-            meta_raw = item.get("metaData", {})
-            amenities = meta_raw.get("amenities", []) or meta_raw.get("features", [])
-            if isinstance(amenities, list):
-                for a in amenities:
-                    a_str = str(a).lower() if not isinstance(a, dict) else str(a.get("key", "")).lower()
-                    if "mamad" in a_str or "saferoom" in a_str or "safe_room" in a_str or "shelter" in a_str:
-                        has_mamad = True
-                        break
-            # Also check in raw item for common Yad2 keys
-            if item.get("shelter") or item.get("safeRoom") or item.get("mampiMemad"):
-                has_mamad = True
-            # Check boolean flags in additionalDetails
-            for key in ["hasShelter", "hasMamad", "has_mamad", "mampiMemad", "safeRoom", "safe_room"]:
-                if details.get(key):
-                    has_mamad = True
-                    break
 
             meta = item.get("metaData", {})
             description = str(meta.get("description", ""))
@@ -197,7 +152,6 @@ class Yad2Scraper:
                 lat=lat,
                 lon=lon,
                 distance_to_beach_km=dist_beach,
-                has_mamad=has_mamad,
             )
         except Exception as e:
             logger.error(f"Error parsing item: {e}")
