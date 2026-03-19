@@ -191,7 +191,7 @@ class TelegramNotifier:
             "",
             f"💰 מחיר ישן: ₪{change['old_price']:,}",
             f"💰 מחיר חדש: ₪{change['new_price']:,}",
-            f"{'🟢' if diff < 0 else '🔴'} המחיר {direction} ב-{diff_str} ({pct:+.1f}%)",
+            f"{'🟢' if diff < 0 else '🔴'} המחיר {direction} ב{diff_str} ({pct:+.1f}%)",
         ]
 
         url = change.get("url")
