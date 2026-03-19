@@ -217,6 +217,10 @@ def main():
     pending_apartments = []
     for apt in apartments:
         apt.score = scorer.score(apt)
+        # בדוק שינוי מחיר לפני שמירה (כדי להשוות למחיר הישן)
+        price_change = db.check_price_change(apt.id, apt.price)
+        if price_change:
+            logger.info(f"  [💰 PRICE] {apt.neighborhood} | ₪{price_change['old_price']:,} → ₪{price_change['new_price']:,} ({price_change['pct']:+.1f}%)")
         if db.is_unsent(apt.id):
             threshold = config.get("scan", {}).get("score_threshold", 0)
             if apt.score >= threshold:
@@ -229,22 +233,42 @@ def main():
     logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} pending")
 
     if pending_apartments:
-        max_send = config.get("scan", {}).get("max_results_per_scan", 50)
+        max_send = config.get("scan", {}).get("max_results_per_scan", 10)
         pending_apartments.sort(key=lambda a: a.score, reverse=True)
         to_send = pending_apartments[:max_send]
         logger.info(f"\n📱 Sending {len(to_send)} Telegram alerts (top {max_send} by score)...")
         sent_count = 0
         for apt in to_send:
             success = notifier.send_apartment_alert(apt)
+            # סמן כ-notified תמיד — גם אם שעות שקטות, כדי לא לשלוח שוב
+            db.mark_notified(apt.id)
             if success:
-                db.mark_notified(apt.id)
                 sent_count += 1
             time.sleep(1)
         logger.info(f"✅ Sent {sent_count}/{len(to_send)} alerts")
         if sent_count > 3:
             notifier.send_summary(to_send[:sent_count], len(apartments))
+
+        # סמן את כל השאר (שלא נשלחו בגלל max_send) כ-notified כדי למנוע הצפה
+        skipped = pending_apartments[max_send:]
+        for apt in skipped:
+            db.mark_notified(apt.id)
+        if skipped:
+            logger.info(f"⏭ Marked {len(skipped)} additional apartments as seen (over max_send limit)")
     else:
         logger.info("😴 No pending apartments this scan")
+
+    # שלח התראות על שינויי מחיר
+    price_changes = db.get_unsent_price_changes()
+    if price_changes:
+        logger.info(f"\n💰 Found {len(price_changes)} price changes to notify")
+        for change in price_changes[:5]:  # מקסימום 5 התראות מחיר לסריקה
+            success = notifier.send_price_change_alert(change)
+            # סמן תמיד כנשלח — גם בשעות שקטות
+            db.mark_price_change_notified(change["id"])
+            if success:
+                logger.info(f"  💰 Price alert sent: {change['apartment_id']}")
+            time.sleep(1)
 
     db.log_scan(source="yad2", total=len(apartments), new=len(pending_apartments))
     stats = db.get_stats()
