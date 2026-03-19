@@ -59,6 +59,7 @@ class Apartment:
     lat: float = 0.0
     lon: float = 0.0
     distance_to_beach_km: float = -1.0
+    has_mamad: bool = False
 
     def to_dict(self):
         return asdict(self)
@@ -101,6 +102,13 @@ class Yad2Scraper:
                 # מחשבים מרחק רק על ציר הרוחב (מזרח-מערב)
                 # כי החוף הוא קו מאונך לגמרי
                 dist_beach = haversine_km(lat, lon, lat, BEACH_LON)
+
+            # ממ"ד
+            has_mamad = bool(
+                details.get("hasMamad")
+                or details.get("hasSafeRoom")
+                or item.get("hasMamad")
+            )
 
             meta = item.get("metaData", {})
             description = str(meta.get("description", ""))
@@ -152,6 +160,7 @@ class Yad2Scraper:
                 lat=lat,
                 lon=lon,
                 distance_to_beach_km=dist_beach,
+                has_mamad=has_mamad,
             )
         except Exception as e:
             logger.error(f"Error parsing item: {e}")
@@ -168,6 +177,8 @@ class Yad2Scraper:
             if apt.rooms > config.get("max_rooms", 99): return False
         if apt.area_sqm > 0 and config.get("min_area_sqm"):
             if apt.area_sqm < config["min_area_sqm"]: return False
+        if apt.floor > 0 and config.get("max_floor"):
+            if apt.floor > config["max_floor"]: return False
 
         # פילטר מרחק מהחוף
         max_beach_km = config.get("max_distance_from_beach_km", 0)
@@ -182,8 +193,16 @@ class Yad2Scraper:
                 if not any(n.strip() in apt.neighborhood for n in neighborhoods):
                     return False
 
-        exclude = config.get("keywords_exclude", [])
         full_text = f"{apt.title} {apt.description}".lower()
+
+        # מילות חובה — אם מוגדרות, חייבת להכיל לפחות אחת
+        include = config.get("keywords_include", [])
+        if include:
+            if not any(kw.lower() in full_text for kw in include):
+                return False
+
+        # מילים לסינון
+        exclude = config.get("keywords_exclude", [])
         for kw in exclude:
             if kw.lower() in full_text: return False
 

@@ -59,6 +59,14 @@ class ApartmentDB:
                 )
             """)
             conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_price_history_apartment
+                ON price_history (apartment_id)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_apartments_notified
+                ON apartments (notified)
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -92,38 +100,35 @@ class ApartmentDB:
             return row[0] == 0  # Seen but not yet notified
 
     def save_apartment(self, apt) -> bool:
-        """שומר דירה למסד הנתונים — בלי לאפס את דגל notified"""
+        """שומר דירה למסד הנתונים — בלי לאפס את דגל notified (UPSERT)"""
         try:
+            raw = json.dumps(apt.raw_data, ensure_ascii=False)
             with sqlite3.connect(self.db_path) as conn:
-                # INSERT OR IGNORE — אם כבר קיים, לא נוגעים
                 conn.execute("""
-                    INSERT OR IGNORE INTO apartments
+                    INSERT INTO apartments
                     (id, source, title, price, rooms, area_sqm, floor,
                      neighborhood, address, description, contact_name,
                      contact_phone, url, image_url, date_added, score, raw_data)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        price = excluded.price,
+                        rooms = excluded.rooms,
+                        area_sqm = excluded.area_sqm,
+                        floor = excluded.floor,
+                        neighborhood = excluded.neighborhood,
+                        address = excluded.address,
+                        description = excluded.description,
+                        contact_name = excluded.contact_name,
+                        contact_phone = excluded.contact_phone,
+                        url = excluded.url,
+                        image_url = excluded.image_url,
+                        score = excluded.score,
+                        raw_data = excluded.raw_data
                 """, (
                     apt.id, apt.source, apt.title, apt.price, apt.rooms,
                     apt.area_sqm, apt.floor, apt.neighborhood, apt.address,
                     apt.description, apt.contact_name, apt.contact_phone,
-                    apt.url, apt.image_url, apt.date_added, apt.score,
-                    json.dumps(apt.raw_data, ensure_ascii=False)
-                ))
-                # UPDATE — עדכן פרטים (מחיר/ציון וכו') בלי לגעת ב-notified
-                conn.execute("""
-                    UPDATE apartments SET
-                        price = ?, rooms = ?, area_sqm = ?, floor = ?,
-                        neighborhood = ?, address = ?, description = ?,
-                        contact_name = ?, contact_phone = ?, url = ?,
-                        image_url = ?, score = ?, raw_data = ?
-                    WHERE id = ?
-                """, (
-                    apt.price, apt.rooms, apt.area_sqm, apt.floor,
-                    apt.neighborhood, apt.address, apt.description,
-                    apt.contact_name, apt.contact_phone, apt.url,
-                    apt.image_url, apt.score,
-                    json.dumps(apt.raw_data, ensure_ascii=False),
-                    apt.id
+                    apt.url, apt.image_url, apt.date_added, apt.score, raw
                 ))
                 conn.commit()
             return True
@@ -185,12 +190,15 @@ class ApartmentDB:
 
     def mark_price_change_notified(self, price_history_id: int):
         """מסמן שינוי מחיר כ'נשלח'"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "UPDATE price_history SET notified = 1 WHERE id = ?",
-                (price_history_id,)
-            )
-            conn.commit()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE price_history SET notified = 1 WHERE id = ?",
+                    (price_history_id,)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Error marking price change {price_history_id} as notified: {e}")
 
     def mark_notified(self, apartment_id: str):
         """מסמן דירה כ'נשלחה התראה'"""
