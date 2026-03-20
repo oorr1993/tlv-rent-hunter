@@ -231,6 +231,22 @@ class ApartmentDB:
         except Exception as e:
             logger.error(f"Error marking apartment {apartment_id} as notified: {e}")
 
+    def is_first_run(self) -> bool:
+        """בודק אם זו הריצה הראשונה (DB ריק או כמעט ריק)"""
+        with sqlite3.connect(self.db_path) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM apartments").fetchone()[0]
+            return count == 0
+
+    def seed_apartments(self, apartments: list) -> int:
+        """ריצה ראשונה: שמור את כל הדירות כ-notified בלי לשלוח.
+        זה יוצר את 'הבסיס' — בסריקות הבאות רק דירות חדשות יישלחו."""
+        count = 0
+        for apt in apartments:
+            self.save_apartment(apt)
+            self.mark_notified(apt.id)
+            count += 1
+        return count
+
     def log_scan(self, source: str, total: int, new: int, errors: str = ""):
         """מתעד סריקה"""
         with sqlite3.connect(self.db_path) as conn:

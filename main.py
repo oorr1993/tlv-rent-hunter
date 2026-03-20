@@ -214,6 +214,19 @@ def main():
     apartments = scraper.scrape(max_pages=3)
     logger.info(f"Found {len(apartments)} apartments matching filters")
 
+    # === ריצה ראשונה: seed mode ===
+    # שומר את כל הדירות הנוכחיות ב-DB כ"נראו" — בלי לשלוח הודעות.
+    # בסריקות הבאות, רק דירות חדשות לגמרי יישלחו.
+    if db.is_first_run():
+        seeded = db.seed_apartments(apartments)
+        logger.info(f"🌱 SEED MODE: First run — saved {seeded} apartments as baseline (no notifications)")
+        logger.info("   Next scan will only notify about NEW listings that appear after this point.")
+        notifier._send_message(f"🌱 הבוט הופעל!\n\nנשמרו {seeded} דירות קיימות כבסיס.\nמעכשיו תקבל התראה רק על דירות חדשות שיעלו ליד2.")
+        db.log_scan(source="yad2", total=len(apartments), new=0)
+        logger.info(f"\n🏁 Seed complete at {datetime.now().strftime('%H:%M:%S')}")
+        return
+
+    # === סריקה רגילה ===
     pending_apartments = []
     skipped_dup = 0
     for apt in apartments:
@@ -232,14 +245,13 @@ def main():
                 threshold = config.get("scan", {}).get("score_threshold", 0)
                 if apt.score >= threshold:
                     pending_apartments.append(apt)
-                    status = "NEW" if db.is_new(apt.id) else "PENDING"
                     beach_info = f" | {apt.distance_to_beach_km:.1f}km חוף" if apt.distance_to_beach_km >= 0 else ""
-                    logger.info(f"  [{status}] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
+                    logger.info(f"  [NEW] {apt.rooms}חד | ₪{apt.price:,} | {apt.neighborhood}{beach_info} | Score: {apt.score}")
         db.save_apartment(apt)
     if skipped_dup:
         logger.info(f"  ⏭ Skipped {skipped_dup} content-duplicate apartments")
 
-    logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} pending")
+    logger.info(f"\n📊 Results: {len(apartments)} total, {len(pending_apartments)} new")
 
     if pending_apartments:
         max_send = config.get("scan", {}).get("max_results_per_scan", 10)
@@ -255,8 +267,6 @@ def main():
                 sent_count += 1
             time.sleep(1)
         logger.info(f"✅ Sent {sent_count}/{len(to_send)} alerts")
-        if sent_count > 3:
-            notifier.send_summary(to_send[:sent_count], len(apartments))
 
         # סמן את כל השאר (שלא נשלחו בגלל max_send) כ-notified כדי למנוע הצפה
         skipped = pending_apartments[max_send:]
@@ -265,7 +275,7 @@ def main():
         if skipped:
             logger.info(f"⏭ Marked {len(skipped)} additional apartments as seen (over max_send limit)")
     else:
-        logger.info("😴 No pending apartments this scan")
+        logger.info("😴 No new apartments this scan")
 
     # שלח התראות על שינויי מחיר
     price_changes = db.get_unsent_price_changes()

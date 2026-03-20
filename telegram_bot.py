@@ -258,9 +258,14 @@ class TelegramNotifier:
             return r.status_code == 200
         except Exception: return False
 
-    def send_startup_message(self) -> bool:
+    def _send_message(self, text: str) -> bool:
+        """שולח הודעת טקסט פשוטה"""
         try:
             r = requests.post(f"{self.api_url}/sendMessage",
-                json={"chat_id": self.chat_id, "text": "🚀 דירה-האנטר הופעל! שלח /עזרה לרשימת פקודות."}, timeout=10)
+                json={"chat_id": self.chat_id, "text": text}, timeout=10)
             return r.status_code == 200
-        except Exception: return False
+        except Exception:
+            return False
+
+    def send_startup_message(self) -> bool:
+        return self._send_message("🚀 דירה-האנטר הופעל! שלח /עזרה לרשימת פקודות.")
